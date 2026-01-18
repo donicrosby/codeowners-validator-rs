@@ -3,10 +3,12 @@
 //! Provides a custom `Span` struct that tracks byte offset, line number, and column
 //! for precise error reporting in CODEOWNERS file parsing.
 
+use serde::Serialize;
+
 /// Represents a location span in the source file.
 ///
 /// All positions are 1-based for human-readable error messages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Span {
     /// Byte offset from the start of the input (0-based).
     pub offset: usize,

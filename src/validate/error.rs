@@ -4,10 +4,12 @@
 //! semantic issues found after parsing.
 
 use crate::parse::span::Span;
+use serde::Serialize;
 use thiserror::Error;
 
 /// The severity of a validation issue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// A warning that doesn't prevent the file from working.
     Warning,
@@ -16,7 +18,8 @@ pub enum Severity {
 }
 
 /// A validation error found in a CODEOWNERS file.
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ValidationError {
     /// Invalid owner format.
     #[error("line {line}: invalid owner format '{owner}' - {reason}")]
@@ -315,7 +318,7 @@ impl ValidationError {
 }
 
 /// The result of validating a CODEOWNERS file.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ValidationResult {
     /// All validation errors found.
     pub errors: Vec<ValidationError>,

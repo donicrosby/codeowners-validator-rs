@@ -52,7 +52,9 @@
 //! - [`parse`]: Parser for CODEOWNERS files
 //! - [`validate`]: Validation rules for parsed files
 //! - [`matching`]: Pattern matching for CODEOWNERS files
+//! - [`cli`]: Command-line interface
 
+pub mod cli;
 pub mod matching;
 pub mod parse;
 pub mod validate;
