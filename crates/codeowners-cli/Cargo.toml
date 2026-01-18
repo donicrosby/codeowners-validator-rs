@@ -11,7 +11,7 @@ name = "codeowners-validator"
 path = "src/main.rs"
 
 [dependencies]
-codeowners-validator-core = { workspace = true, features = ["octocrab"] }
+codeowners-validator-core.workspace = true
 
 # CLI dependencies
 clap.workspace = true
@@ -22,9 +22,11 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+async-trait.workspace = true
 
-# GitHub authentication
+# GitHub API
 octocrab.workspace = true
+http.workspace = true
 secrecy.workspace = true
 jsonwebtoken.workspace = true
 

@@ -6,10 +6,6 @@ license.workspace = true
 description = "A library for parsing and validating GitHub CODEOWNERS files"
 readme = "../../README.md"
 
-[features]
-default = ["octocrab"]
-octocrab = ["dep:octocrab", "dep:http"]
-
 [dependencies]
 nom.workspace = true
 thiserror.workspace = true
@@ -17,13 +13,9 @@ walkdir.workspace = true
 globset.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
-tracing.workspace = true
+log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
-# Optional dependencies for GitHub client
-octocrab = { workspace = true, optional = true }
-http = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -6,6 +6,7 @@ use super::{Check, CheckContext};
 use crate::parse::LineKind;
 use crate::matching::Pattern;
 use crate::validate::{ValidationError, ValidationResult};
+use log::{debug, trace};
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -26,6 +27,7 @@ impl FilesCheck {
 
     /// Lists all files in the repository, relative to the root.
     fn list_files(repo_path: &Path) -> Vec<String> {
+        debug!("Listing files in repository: {:?}", repo_path);
         let mut files = Vec::new();
         
         for entry in WalkDir::new(repo_path)
@@ -59,6 +61,8 @@ impl FilesCheck {
                 }
         }
         
+        debug!("Found {} files in repository", files.len());
+        trace!("Files: {:?}", files);
         files
     }
 
@@ -79,6 +83,7 @@ impl Check for FilesCheck {
     }
 
     fn run(&self, ctx: &CheckContext) -> ValidationResult {
+        debug!("Running files check");
         let mut result = ValidationResult::new();
         
         // List all files in the repository
@@ -87,9 +92,11 @@ impl Check for FilesCheck {
         // Check each pattern
         for line in &ctx.file.lines {
             if let LineKind::Rule { pattern, .. } = &line.kind {
+                trace!("Checking pattern: {}", pattern.text);
                 // Compile the pattern
                 if let Some(compiled) = Pattern::new(&pattern.text)
                     && !Self::pattern_matches_any(&compiled, &files) {
+                        debug!("Pattern '{}' does not match any files", pattern.text);
                         result.add_error(ValidationError::pattern_not_matching(
                             &pattern.text,
                             pattern.span,
@@ -99,6 +106,7 @@ impl Check for FilesCheck {
             }
         }
         
+        debug!("Files check complete: {} errors found", result.errors.len());
         result
     }
 }

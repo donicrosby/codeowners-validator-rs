@@ -10,6 +10,7 @@ use super::lexer::{
     parse_rule_components,
 };
 use super::span::Span;
+use log::{debug, trace};
 
 /// Configuration options for the parser.
 #[derive(Debug, Clone, Default)]
@@ -99,6 +100,7 @@ fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Li
 
 /// Parses a CODEOWNERS file with the given configuration.
 pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> ParseResult {
+    debug!("Parsing CODEOWNERS file ({} bytes, strict={})", input.len(), config.strict);
     let mut lines = Vec::new();
     let mut errors = Vec::new();
     let mut offset = 0;
@@ -108,11 +110,14 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
 
         match parse_line(line_text, line_num, offset) {
             Ok(line) => {
+                trace!("Line {}: parsed successfully", line_num);
                 lines.push(line);
             }
             Err(error) => {
+                debug!("Line {}: parse error - {}", line_num, error);
                 if config.strict {
                     // In strict mode, return immediately on first error
+                    debug!("Strict mode: stopping at first error");
                     return ParseResult::with_errors(CodeownersFile::new(lines), vec![error]);
                 } else {
                     // In lenient mode, record the error and add an Invalid line
@@ -132,6 +137,7 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
     
     let ast = CodeownersFile::new(lines);
     
+    debug!("Parsing complete: {} lines, {} errors", ast.lines.len(), errors.len());
     if errors.is_empty() {
         ParseResult::ok(ast)
     } else {

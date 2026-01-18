@@ -135,69 +135,6 @@ pub trait GithubClient: Send + Sync {
     async fn team_exists(&self, org: &str, team: &str) -> Result<TeamExistsResult, GithubClientError>;
 }
 
-// ============================================================================
-// Octocrab Implementation (feature-gated)
-// ============================================================================
-
-#[cfg(feature = "octocrab")]
-mod octocrab_impl {
-    use super::*;
-    use http::StatusCode;
-
-    /// Extracts the HTTP status code from an octocrab error.
-    fn extract_status_code(error: &octocrab::Error) -> Option<StatusCode> {
-        match error {
-            octocrab::Error::GitHub { source, .. } => Some(source.status_code),
-            _ => None,
-        }
-    }
-
-    #[async_trait]
-    impl GithubClient for octocrab::Octocrab {
-        async fn user_exists(&self, username: &str) -> Result<UserExistsResult, GithubClientError> {
-            match self.users(username).profile().await {
-                Ok(_) => Ok(UserExistsResult::Exists),
-                Err(e) => {
-                    if let Some(status) = extract_status_code(&e) {
-                        match status {
-                            StatusCode::NOT_FOUND => Ok(UserExistsResult::NotFound),
-                            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                                Ok(UserExistsResult::Unauthorized)
-                            }
-                            _ => Err(GithubClientError::ApiError(e.to_string())),
-                        }
-                    } else {
-                        Err(GithubClientError::ApiError(e.to_string()))
-                    }
-                }
-            }
-        }
-
-        async fn team_exists(
-            &self,
-            org: &str,
-            team: &str,
-        ) -> Result<TeamExistsResult, GithubClientError> {
-            match self.teams(org).get(team).await {
-                Ok(_) => Ok(TeamExistsResult::Exists),
-                Err(e) => {
-                    if let Some(status) = extract_status_code(&e) {
-                        match status {
-                            StatusCode::NOT_FOUND => Ok(TeamExistsResult::NotFound),
-                            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                                Ok(TeamExistsResult::Unauthorized)
-                            }
-                            _ => Err(GithubClientError::ApiError(e.to_string())),
-                        }
-                    } else {
-                        Err(GithubClientError::ApiError(e.to_string()))
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

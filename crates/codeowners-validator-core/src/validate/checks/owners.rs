@@ -7,6 +7,7 @@ use crate::parse::{LineKind, Owner};
 use crate::validate::github_client::{TeamExistsResult, UserExistsResult};
 use crate::validate::{ValidationError, ValidationResult};
 use async_trait::async_trait;
+use log::{debug, trace, warn};
 
 /// A check that validates owners exist on GitHub.
 ///
@@ -34,6 +35,7 @@ impl OwnersCheck {
         // Check if owner is in the ignored list
         let owner_str = owner.as_str();
         if ctx.config.ignored_owners.contains(&owner_str) {
+            trace!("Skipping ignored owner: {}", owner_str);
             return None;
         }
 
@@ -41,6 +43,7 @@ impl OwnersCheck {
             Owner::User { name, span } => {
                 // Check if owners must be teams
                 if ctx.config.owners_must_be_teams {
+                    debug!("User @{} rejected: owners_must_be_teams is enabled", name);
                     return Some(ValidationError::owner_must_be_team(
                         format!("@{}", name),
                         *span,
@@ -48,54 +51,78 @@ impl OwnersCheck {
                 }
 
                 // Verify user exists using the GitHub client trait
+                trace!("Checking if user @{} exists", name);
                 match ctx.github_client.user_exists(name).await {
-                    Ok(UserExistsResult::Exists) => None,
-                    Ok(UserExistsResult::NotFound) => Some(ValidationError::owner_not_found(
-                        format!("@{}", name),
-                        "user does not exist",
-                        *span,
-                    )),
+                    Ok(UserExistsResult::Exists) => {
+                        trace!("User @{} exists", name);
+                        None
+                    }
+                    Ok(UserExistsResult::NotFound) => {
+                        debug!("User @{} not found", name);
+                        Some(ValidationError::owner_not_found(
+                            format!("@{}", name),
+                            "user does not exist",
+                            *span,
+                        ))
+                    }
                     Ok(UserExistsResult::Unauthorized) => {
+                        warn!("Unauthorized to check user @{}", name);
                         Some(ValidationError::insufficient_authorization(
                             format!("@{}", name),
                             "may need additional token scopes",
                             *span,
                         ))
                     }
-                    Err(e) => Some(ValidationError::owner_not_found(
-                        format!("@{}", name),
-                        format!("API error: {}", e),
-                        *span,
-                    )),
+                    Err(e) => {
+                        warn!("API error checking user @{}: {}", name, e);
+                        Some(ValidationError::owner_not_found(
+                            format!("@{}", name),
+                            format!("API error: {}", e),
+                            *span,
+                        ))
+                    }
                 }
             }
             Owner::Team { org, team, span } => {
                 // Verify team exists in organization using the GitHub client trait
+                trace!("Checking if team @{}/{} exists", org, team);
                 match ctx.github_client.team_exists(org, team).await {
-                    Ok(TeamExistsResult::Exists) => None,
-                    Ok(TeamExistsResult::NotFound) => Some(ValidationError::owner_not_found(
-                        format!("@{}/{}", org, team),
-                        "team does not exist in organization",
-                        *span,
-                    )),
+                    Ok(TeamExistsResult::Exists) => {
+                        trace!("Team @{}/{} exists", org, team);
+                        None
+                    }
+                    Ok(TeamExistsResult::NotFound) => {
+                        debug!("Team @{}/{} not found", org, team);
+                        Some(ValidationError::owner_not_found(
+                            format!("@{}/{}", org, team),
+                            "team does not exist in organization",
+                            *span,
+                        ))
+                    }
                     Ok(TeamExistsResult::Unauthorized) => {
+                        warn!("Unauthorized to check team @{}/{}", org, team);
                         Some(ValidationError::insufficient_authorization(
                             format!("@{}/{}", org, team),
                             "may need read:org scope or team membership",
                             *span,
                         ))
                     }
-                    Err(e) => Some(ValidationError::owner_not_found(
-                        format!("@{}/{}", org, team),
-                        format!("API error: {}", e),
-                        *span,
-                    )),
+                    Err(e) => {
+                        warn!("API error checking team @{}/{}: {}", org, team, e);
+                        Some(ValidationError::owner_not_found(
+                            format!("@{}/{}", org, team),
+                            format!("API error: {}", e),
+                            *span,
+                        ))
+                    }
                 }
             }
             Owner::Email { .. } => {
                 // Cannot validate emails via GitHub API
+                trace!("Skipping email owner validation: {}", owner.as_str());
                 // Check if owners must be teams
                 if ctx.config.owners_must_be_teams {
+                    debug!("Email {} rejected: owners_must_be_teams is enabled", owner.as_str());
                     return Some(ValidationError::owner_must_be_team(
                         owner.as_str(),
                         *owner.span(),
@@ -114,6 +141,7 @@ impl AsyncCheck for OwnersCheck {
     }
 
     async fn run(&self, ctx: &AsyncCheckContext<'_>) -> ValidationResult {
+        debug!("Running owners check");
         let mut result = ValidationResult::new();
 
         // Collect all unique owners to avoid duplicate API calls
@@ -126,6 +154,7 @@ impl AsyncCheck for OwnersCheck {
 
                     // Skip if already checked
                     if checked_owners.contains(&owner_str) {
+                        trace!("Skipping already-checked owner: {}", owner_str);
                         continue;
                     }
                     checked_owners.insert(owner_str);
@@ -137,6 +166,8 @@ impl AsyncCheck for OwnersCheck {
             }
         }
 
+        debug!("Owners check complete: {} unique owners checked, {} errors found", 
+               checked_owners.len(), result.errors.len());
         result
     }
 }

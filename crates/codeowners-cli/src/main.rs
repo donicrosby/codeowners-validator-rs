@@ -14,6 +14,7 @@ use tracing_subscriber::EnvFilter;
 mod cli;
 
 use cli::config::{create_octocrab, ExitCode, ValidatedConfig};
+use cli::github::OctocrabClient;
 use cli::output::{HumanOutput, ValidationResults};
 use cli::{Args, CheckKind, ExperimentalCheckKind};
 use codeowners_validator_core::parse::parse_codeowners;
@@ -167,7 +168,7 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
     // Create GitHub client if needed
     let octocrab = if config.checks.contains(&CheckKind::Owners) {
         match create_octocrab(&args).await {
-            Ok(client) => client,
+            Ok(client) => client.map(OctocrabClient::new),
             Err(e) => {
                 write_error(&mut stderr, &e.to_string(), use_colors);
                 return ExitCode::StartupFailure;
@@ -206,13 +207,11 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
                     use codeowners_validator_core::validate::checks::{
                         AsyncCheck, AsyncCheckContext, OwnersCheck,
                     };
-                    use codeowners_validator_core::validate::github_client::GithubClient;
-                    let github_client: &dyn GithubClient = octo;
                     let async_ctx = AsyncCheckContext::new(
                         &parse_result.ast,
                         &config.repo_path,
                         &config.check_config,
-                        github_client,
+                        octo,
                     );
                     ("owners", OwnersCheck::new().run(&async_ctx).await)
                 } else {

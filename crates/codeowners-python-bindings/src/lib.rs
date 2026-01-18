@@ -353,6 +353,10 @@ async fn validate_with_github_impl(
 /// The Python module for codeowners_validator.
 #[pymodule]
 fn _codeowners_validator(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Initialize Rust -> Python logging bridge
+    // This must be called before any log statements are executed
+    pyo3_log::init();
+
     m.add_function(wrap_pyfunction!(parse_codeowners, m)?)?;
     m.add_function(wrap_pyfunction!(validate_codeowners, m)?)?;
     m.add_function(wrap_pyfunction!(validate_with_github, m)?)?;

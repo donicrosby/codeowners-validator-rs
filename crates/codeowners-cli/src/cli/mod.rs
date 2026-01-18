@@ -5,6 +5,7 @@
 //! from the Go version of the codeowners-validator.
 
 pub mod config;
+pub mod github;
 pub mod output;
 
 use clap::{Parser, ValueEnum};

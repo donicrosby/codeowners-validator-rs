@@ -21,6 +21,7 @@ use crate::parse::CodeownersFile;
 use crate::validate::github_client::GithubClient;
 use crate::validate::ValidationResult;
 use async_trait::async_trait;
+use log::{debug, info};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -199,13 +200,18 @@ impl CheckRunner {
         repo_path: &Path,
         config: &CheckConfig,
     ) -> ValidationResult {
+        info!("Running {} synchronous checks", self.checks.len());
         let ctx = CheckContext::new(file, repo_path, config);
         let mut result = ValidationResult::new();
 
         for check in &self.checks {
-            result.merge(check.run(&ctx));
+            debug!("Running check: {}", check.name());
+            let check_result = check.run(&ctx);
+            debug!("Check '{}' found {} issues", check.name(), check_result.errors.len());
+            result.merge(check_result);
         }
 
+        info!("Synchronous checks complete: {} total issues", result.errors.len());
         result
     }
 
@@ -217,22 +223,33 @@ impl CheckRunner {
         config: &CheckConfig,
         github_client: Option<&dyn GithubClient>,
     ) -> ValidationResult {
+        info!("Running all checks ({} sync, {} async)", 
+              self.checks.len(), self.async_checks.len());
         let ctx = CheckContext::new(file, repo_path, config);
         let mut result = ValidationResult::new();
 
         // Run synchronous checks
         for check in &self.checks {
-            result.merge(check.run(&ctx));
+            debug!("Running sync check: {}", check.name());
+            let check_result = check.run(&ctx);
+            debug!("Check '{}' found {} issues", check.name(), check_result.errors.len());
+            result.merge(check_result);
         }
 
         // Run asynchronous checks if github_client is provided
         if let Some(client) = github_client {
             let async_ctx = AsyncCheckContext::new(file, repo_path, config, client);
             for check in &self.async_checks {
-                result.merge(check.run(&async_ctx).await);
+                debug!("Running async check: {}", check.name());
+                let check_result = check.run(&async_ctx).await;
+                debug!("Check '{}' found {} issues", check.name(), check_result.errors.len());
+                result.merge(check_result);
             }
+        } else {
+            debug!("No GitHub client provided, skipping {} async checks", self.async_checks.len());
         }
 
+        info!("All checks complete: {} total issues", result.errors.len());
         result
     }
 }

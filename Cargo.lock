@@ -274,9 +274,11 @@ checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
 name = "codeowners-cli"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap",
  "codeowners-validator-core",
  "colored",
+ "http",
  "jsonwebtoken",
  "octocrab",
  "secrecy",
@@ -295,8 +297,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "codeowners-validator-core",
+ "log",
  "pyo3",
  "pyo3-async-runtimes",
+ "pyo3-log",
  "pythonize",
  "serde",
  "serde_json",
@@ -310,16 +314,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "globset",
- "http",
+ "log",
  "nom",
- "octocrab",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-test",
- "tracing",
  "walkdir",
  "wiremock",
 ]
@@ -1549,6 +1551,17 @@ checksum = "1c85c9cbfaddf651b1221594209aed57e9e5cff63c4d11d1feead529b872a089"
 dependencies = [
  "libc",
  "pyo3-build-config",
+]
+
+[[package]]
+name = "pyo3-log"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f8bae9ad5ba08b0b0ed2bb9c2bdbaeccc69cafca96d78cf0fbcea0d45d122bb"
+dependencies = [
+ "arc-swap",
+ "log",
+ "pyo3",
 ]
 
 [[package]]
