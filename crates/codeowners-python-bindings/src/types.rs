@@ -216,35 +216,30 @@ impl PyCheckConfig {
     pub fn from_dict(_py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<Self> {
         let mut config = Self::default();
 
-        if let Ok(Some(val)) = dict.get_item("ignored_owners") {
-            if let Ok(list) = val.extract::<Vec<String>>() {
+        if let Ok(Some(val)) = dict.get_item("ignored_owners")
+            && let Ok(list) = val.extract::<Vec<String>>() {
                 config.ignored_owners = list.into_iter().collect();
             }
-        }
 
-        if let Ok(Some(val)) = dict.get_item("owners_must_be_teams") {
-            if let Ok(b) = val.extract::<bool>() {
+        if let Ok(Some(val)) = dict.get_item("owners_must_be_teams")
+            && let Ok(b) = val.extract::<bool>() {
                 config.owners_must_be_teams = b;
             }
-        }
 
-        if let Ok(Some(val)) = dict.get_item("allow_unowned_patterns") {
-            if let Ok(b) = val.extract::<bool>() {
+        if let Ok(Some(val)) = dict.get_item("allow_unowned_patterns")
+            && let Ok(b) = val.extract::<bool>() {
                 config.allow_unowned_patterns = b;
             }
-        }
 
-        if let Ok(Some(val)) = dict.get_item("skip_patterns") {
-            if let Ok(list) = val.extract::<Vec<String>>() {
+        if let Ok(Some(val)) = dict.get_item("skip_patterns")
+            && let Ok(list) = val.extract::<Vec<String>>() {
                 config.skip_patterns = list;
             }
-        }
 
-        if let Ok(Some(val)) = dict.get_item("repository") {
-            if let Ok(s) = val.extract::<String>() {
+        if let Ok(Some(val)) = dict.get_item("repository")
+            && let Ok(s) = val.extract::<String>() {
                 config.repository = Some(s);
             }
-        }
 
         Ok(config)
     }

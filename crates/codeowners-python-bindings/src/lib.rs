@@ -235,31 +235,26 @@ async fn validate_with_github_impl(
         Some(cfg) => {
             let mut config = codeowners_validator_core::validate::checks::CheckConfig::new();
 
-            if let Some(obj) = cfg.get("ignored_owners") {
-                if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
+            if let Some(obj) = cfg.get("ignored_owners")
+                && let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
                     config = config.with_ignored_owners(list.into_iter().collect());
                 }
-            }
-            if let Some(obj) = cfg.get("owners_must_be_teams") {
-                if let Ok(val) = obj.bind(py).extract::<bool>() {
+            if let Some(obj) = cfg.get("owners_must_be_teams")
+                && let Ok(val) = obj.bind(py).extract::<bool>() {
                     config = config.with_owners_must_be_teams(val);
                 }
-            }
-            if let Some(obj) = cfg.get("allow_unowned_patterns") {
-                if let Ok(val) = obj.bind(py).extract::<bool>() {
+            if let Some(obj) = cfg.get("allow_unowned_patterns")
+                && let Ok(val) = obj.bind(py).extract::<bool>() {
                     config = config.with_allow_unowned_patterns(val);
                 }
-            }
-            if let Some(obj) = cfg.get("skip_patterns") {
-                if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
+            if let Some(obj) = cfg.get("skip_patterns")
+                && let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
                     config = config.with_skip_patterns(list);
                 }
-            }
-            if let Some(obj) = cfg.get("repository") {
-                if let Ok(val) = obj.bind(py).extract::<String>() {
+            if let Some(obj) = cfg.get("repository")
+                && let Ok(val) = obj.bind(py).extract::<String>() {
                     config = config.with_repository(val);
                 }
-            }
             config
         }
         None => codeowners_validator_core::validate::checks::CheckConfig::new(),
