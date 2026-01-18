@@ -2,7 +2,8 @@
 //!
 //! This module provides human-readable and JSON output formatters for validation results.
 
-use crate::validate::{Severity, ValidationError, ValidationResult};
+use codeowners_validator_core::validate::{Severity, ValidationError, ValidationResult};
+use colored::Colorize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
@@ -112,10 +113,11 @@ impl<W: Write> HumanOutput<W> {
 
     /// Writes a header for a check.
     pub fn write_check_header(&mut self, check_name: &str) -> std::io::Result<()> {
+        let header = format!("==> {}", check_name);
         if self.use_colors {
-            writeln!(self.writer, "\n\x1b[1;36m==> {}\x1b[0m", check_name)?;
+            writeln!(self.writer, "\n{}", header.cyan().bold())?;
         } else {
-            writeln!(self.writer, "\n==> {}", check_name)?;
+            writeln!(self.writer, "\n{}", header)?;
         }
         Ok(())
     }
@@ -144,17 +146,18 @@ impl<W: Write> HumanOutput<W> {
         let severity = error.severity();
         let message = error.to_string();
 
+        let label = match severity {
+            Severity::Error => "ERROR",
+            Severity::Warning => "WARN",
+        };
+
         if self.use_colors {
-            let (color, label) = match severity {
-                Severity::Error => ("\x1b[1;31m", "ERROR"),
-                Severity::Warning => ("\x1b[1;33m", "WARN"),
+            let colored_label = match severity {
+                Severity::Error => format!("[{}]", label).red().bold(),
+                Severity::Warning => format!("[{}]", label).yellow().bold(),
             };
-            writeln!(self.writer, "  {}[{}]\x1b[0m {}", color, label, message)?;
+            writeln!(self.writer, "  {} {}", colored_label, message)?;
         } else {
-            let label = match severity {
-                Severity::Error => "ERROR",
-                Severity::Warning => "WARN",
-            };
             writeln!(self.writer, "  [{}] {}", label, message)?;
         }
 
@@ -170,27 +173,21 @@ impl<W: Write> HumanOutput<W> {
         writeln!(self.writer)?;
 
         if total_errors == 0 && total_warnings == 0 {
+            let message = "✓ CODEOWNERS file is valid";
             if self.use_colors {
-                writeln!(
-                    self.writer,
-                    "\x1b[1;32m✓ CODEOWNERS file is valid\x1b[0m"
-                )?;
+                writeln!(self.writer, "{}", message.green().bold())?;
             } else {
-                writeln!(self.writer, "✓ CODEOWNERS file is valid")?;
+                writeln!(self.writer, "{}", message)?;
             }
         } else {
+            let message = format!(
+                "✗ Found {} error(s) and {} warning(s)",
+                total_errors, total_warnings
+            );
             if self.use_colors {
-                writeln!(
-                    self.writer,
-                    "\x1b[1;31m✗ Found {} error(s) and {} warning(s)\x1b[0m",
-                    total_errors, total_warnings
-                )?;
+                writeln!(self.writer, "{}", message.red().bold())?;
             } else {
-                writeln!(
-                    self.writer,
-                    "✗ Found {} error(s) and {} warning(s)",
-                    total_errors, total_warnings
-                )?;
+                writeln!(self.writer, "{}", message)?;
             }
         }
 
@@ -200,7 +197,7 @@ impl<W: Write> HumanOutput<W> {
     /// Writes a startup error.
     pub fn write_error(&mut self, message: &str) -> std::io::Result<()> {
         if self.use_colors {
-            writeln!(self.writer, "\x1b[1;31mError:\x1b[0m {}", message)?;
+            writeln!(self.writer, "{} {}", "Error:".red().bold(), message)?;
         } else {
             writeln!(self.writer, "Error: {}", message)?;
         }
@@ -227,10 +224,7 @@ impl ValidationResults {
         if !self.results.contains_key(&name) {
             self.order.push(name.clone());
         }
-        self.results
-            .entry(name)
-            .or_default()
-            .merge(result);
+        self.results.entry(name).or_default().merge(result);
     }
 
     /// Returns the total number of errors.
@@ -257,11 +251,6 @@ impl ValidationResults {
     /// Returns true if there are any warnings.
     pub fn has_warnings(&self) -> bool {
         self.total_warnings() > 0
-    }
-
-    /// Returns true if there are any issues.
-    pub fn has_issues(&self) -> bool {
-        self.results.values().any(|r| r.has_errors())
     }
 
     /// Iterates over results in order.
@@ -299,7 +288,7 @@ impl ValidationResults {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::span::Span;
+    use codeowners_validator_core::parse::span::Span;
 
     fn test_span() -> Span {
         Span::new(0, 1, 1, 5)

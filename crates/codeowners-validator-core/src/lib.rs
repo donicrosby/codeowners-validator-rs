@@ -1,4 +1,4 @@
-//! CODEOWNERS Validator
+//! CODEOWNERS Validator Core
 //!
 //! A library for parsing and validating GitHub CODEOWNERS files.
 //!
@@ -12,8 +12,8 @@
 //! # Quick Start
 //!
 //! ```rust
-//! use codeowners_validator::parse::parse_codeowners;
-//! use codeowners_validator::validate::validate_syntax;
+//! use codeowners_validator_core::parse::parse_codeowners;
+//! use codeowners_validator_core::validate::validate_syntax;
 //!
 //! let input = r#"
 //! # CODEOWNERS file
@@ -52,14 +52,12 @@
 //! - [`parse`]: Parser for CODEOWNERS files
 //! - [`validate`]: Validation rules for parsed files
 //! - [`matching`]: Pattern matching for CODEOWNERS files
-//! - [`cli`]: Command-line interface
 
-pub mod cli;
 pub mod matching;
 pub mod parse;
 pub mod validate;
 
 // Re-export commonly used types at the crate root
 pub use parse::{parse_codeowners, CodeownersFile, ParseResult};
+pub use validate::checks::{AsyncCheck, AsyncCheckContext, Check, CheckConfig, CheckContext, CheckRunner};
 pub use validate::{validate_syntax, ValidationResult};
-pub use validate::checks::{CheckConfig, CheckContext, AsyncCheckContext, Check, AsyncCheck, CheckRunner};

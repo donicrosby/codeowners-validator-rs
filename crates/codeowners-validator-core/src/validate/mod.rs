@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use codeowners_validator::parse::parse_codeowners;
-//! use codeowners_validator::validate::{validate_syntax, ValidationResult};
+//! use codeowners_validator_core::parse::parse_codeowners;
+//! use codeowners_validator_core::validate::{validate_syntax, ValidationResult};
 //!
 //! let input = "*.rs @rustacean\n";
 //! let parse_result = parse_codeowners(input);
@@ -26,6 +26,7 @@
 
 pub mod checks;
 mod error;
+pub mod github_client;
 mod syntax;
 
 // Re-export public types

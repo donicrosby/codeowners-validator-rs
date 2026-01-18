@@ -3,9 +3,10 @@
 //! This module converts CLI arguments into the library's configuration types
 //! and handles GitHub authentication setup.
 
-use crate::cli::{Args, CheckKind, ExperimentalCheckKind, FailureLevel};
-use crate::validate::checks::CheckConfig;
-use crate::validate::Severity;
+use super::{Args, CheckKind, ExperimentalCheckKind, FailureLevel};
+use codeowners_validator_core::validate::checks::CheckConfig;
+#[cfg(test)]
+use codeowners_validator_core::validate::Severity;
 use jsonwebtoken::EncodingKey;
 use octocrab::models::{AppId, InstallationId};
 use octocrab::Octocrab;
@@ -127,11 +128,7 @@ impl ValidatedConfig {
     }
 
     /// Determines the exit code based on validation results.
-    pub fn exit_code_for_results(
-        &self,
-        has_errors: bool,
-        has_warnings: bool,
-    ) -> ExitCode {
+    pub fn exit_code_for_results(&self, has_errors: bool, has_warnings: bool) -> ExitCode {
         if has_errors {
             return ExitCode::ValidationFailed;
         }
@@ -229,10 +226,8 @@ pub async fn create_octocrab(args: &Args) -> Result<Option<Octocrab>, ConfigErro
 }
 
 /// Determines if validation failed based on results and failure level.
-pub fn has_failures(
-    errors: impl Iterator<Item = Severity>,
-    failure_level: FailureLevel,
-) -> bool {
+#[cfg(test)]
+pub fn has_failures(errors: impl Iterator<Item = Severity>, failure_level: FailureLevel) -> bool {
     for severity in errors {
         match (severity, failure_level) {
             (Severity::Error, _) => return true,
@@ -246,6 +241,7 @@ pub fn has_failures(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use std::fs;
     use tempfile::TempDir;
 
@@ -300,7 +296,7 @@ mod tests {
     fn test_has_failures_error() {
         let errors = vec![Severity::Error];
         assert!(has_failures(errors.into_iter(), FailureLevel::Warning));
-        
+
         let errors = vec![Severity::Error];
         assert!(has_failures(errors.into_iter(), FailureLevel::Error));
     }
@@ -309,7 +305,7 @@ mod tests {
     fn test_has_failures_warning() {
         let warnings = vec![Severity::Warning];
         assert!(has_failures(warnings.into_iter(), FailureLevel::Warning));
-        
+
         let warnings = vec![Severity::Warning];
         assert!(!has_failures(warnings.into_iter(), FailureLevel::Error));
     }
@@ -322,9 +318,6 @@ mod tests {
 
     #[test]
     fn test_exit_code_for_results() {
-        use crate::cli::Args;
-        use clap::Parser;
-
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -356,9 +349,6 @@ mod tests {
 
     #[test]
     fn test_exit_code_error_level() {
-        use crate::cli::Args;
-        use clap::Parser;
-
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -386,9 +376,6 @@ mod tests {
 
     #[test]
     fn test_validated_config_missing_owner_repo() {
-        use crate::cli::Args;
-        use clap::Parser;
-
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -407,9 +394,6 @@ mod tests {
 
     #[test]
     fn test_validated_config_without_owners_check() {
-        use crate::cli::Args;
-        use clap::Parser;
-
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",

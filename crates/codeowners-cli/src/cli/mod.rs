@@ -146,13 +146,9 @@ impl Args {
     }
 
     /// Returns true if a specific check should be run.
+    #[cfg(test)]
     pub fn should_run_check(&self, check: CheckKind) -> bool {
         self.effective_checks().contains(&check)
-    }
-
-    /// Returns true if a specific experimental check should be run.
-    pub fn should_run_experimental_check(&self, check: ExperimentalCheckKind) -> bool {
-        self.effective_experimental_checks().contains(&check)
     }
 
     /// Returns true if GitHub authentication is configured.

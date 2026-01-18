@@ -1,12 +1,21 @@
-[package]
-name = "codeowners-validator"
+[workspace]
+resolver = "2"
+members = [
+    "crates/codeowners-validator-core",
+    "crates/codeowners-cli",
+    "crates/codeowners-python-bindings",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/donicrosby/codeowners-validator-rs"
 
-[dependencies]
+[workspace.dependencies]
+# Core dependencies
 nom = "8.0"
 thiserror = "2.0"
-octocrab = "0.49"
 walkdir = "2"
 globset = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
@@ -15,12 +24,24 @@ http = "1.0"
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+colored = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 secrecy = { version = "0.10", features = ["serde"] }
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 
-[dev-dependencies]
+# GitHub client (optional)
+octocrab = "0.49"
+
+# Python bindings
+pyo3 = { version = "0.27", features = ["extension-module"] }
+pyo3-async-runtimes = { version = "0.27", features = ["tokio-runtime"] }
+pythonize = "0.27"
+
+# Dev dependencies
 tempfile = "3"
 wiremock = "0.6"
 tokio-test = "0.4"
+
+# Internal crates
+codeowners-validator-core = { path = "crates/codeowners-validator-core", default-features = false }

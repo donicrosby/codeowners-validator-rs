@@ -18,6 +18,7 @@ pub use shadowing::AvoidShadowingCheck;
 pub use syntax::SyntaxCheck;
 
 use crate::parse::CodeownersFile;
+use crate::validate::github_client::GithubClient;
 use crate::validate::ValidationResult;
 use async_trait::async_trait;
 use std::collections::HashSet;
@@ -98,7 +99,6 @@ impl<'a> CheckContext<'a> {
 }
 
 /// Context provided to asynchronous checks that need GitHub API access.
-#[derive(Debug)]
 pub struct AsyncCheckContext<'a> {
     /// The parsed CODEOWNERS file.
     pub file: &'a CodeownersFile,
@@ -106,8 +106,8 @@ pub struct AsyncCheckContext<'a> {
     pub repo_path: &'a Path,
     /// Configuration options.
     pub config: &'a CheckConfig,
-    /// The authenticated Octocrab instance for GitHub API calls.
-    pub octocrab: &'a octocrab::Octocrab,
+    /// The GitHub client for API calls.
+    pub github_client: &'a dyn GithubClient,
 }
 
 impl<'a> AsyncCheckContext<'a> {
@@ -116,14 +116,25 @@ impl<'a> AsyncCheckContext<'a> {
         file: &'a CodeownersFile,
         repo_path: &'a Path,
         config: &'a CheckConfig,
-        octocrab: &'a octocrab::Octocrab,
+        github_client: &'a dyn GithubClient,
     ) -> Self {
         Self {
             file,
             repo_path,
             config,
-            octocrab,
+            github_client,
         }
+    }
+}
+
+impl std::fmt::Debug for AsyncCheckContext<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsyncCheckContext")
+            .field("file", &self.file)
+            .field("repo_path", &self.repo_path)
+            .field("config", &self.config)
+            .field("github_client", &"<dyn GithubClient>")
+            .finish()
     }
 }
 
@@ -204,7 +215,7 @@ impl CheckRunner {
         file: &CodeownersFile,
         repo_path: &Path,
         config: &CheckConfig,
-        octocrab: Option<&octocrab::Octocrab>,
+        github_client: Option<&dyn GithubClient>,
     ) -> ValidationResult {
         let ctx = CheckContext::new(file, repo_path, config);
         let mut result = ValidationResult::new();
@@ -214,9 +225,9 @@ impl CheckRunner {
             result.merge(check.run(&ctx));
         }
 
-        // Run asynchronous checks if octocrab is provided
-        if let Some(octo) = octocrab {
-            let async_ctx = AsyncCheckContext::new(file, repo_path, config, octo);
+        // Run asynchronous checks if github_client is provided
+        if let Some(client) = github_client {
+            let async_ctx = AsyncCheckContext::new(file, repo_path, config, client);
             for check in &self.async_checks {
                 result.merge(check.run(&async_ctx).await);
             }

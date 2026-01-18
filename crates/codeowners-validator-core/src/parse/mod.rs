@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust
-//! use codeowners_validator::parse::{parse_codeowners, ParserConfig};
+//! use codeowners_validator_core::parse::{parse_codeowners, ParserConfig};
 //!
 //! let input = r#"
 //! # CODEOWNERS file

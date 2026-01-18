@@ -11,12 +11,15 @@ use tokio::signal;
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::EnvFilter;
 
-use codeowners_validator::cli::config::{create_octocrab, ExitCode, ValidatedConfig};
-use codeowners_validator::cli::output::{HumanOutput, ValidationResults};
-use codeowners_validator::cli::{Args, CheckKind, ExperimentalCheckKind};
-use codeowners_validator::parse::parse_codeowners;
-use codeowners_validator::validate::checks::{
-    AvoidShadowingCheck, CheckContext, DupPatternsCheck, FilesCheck, NotOwnedCheck, SyntaxCheck,
+mod cli;
+
+use cli::config::{create_octocrab, ExitCode, ValidatedConfig};
+use cli::output::{HumanOutput, ValidationResults};
+use cli::{Args, CheckKind, ExperimentalCheckKind};
+use codeowners_validator_core::parse::parse_codeowners;
+use codeowners_validator_core::validate::checks::{
+    AvoidShadowingCheck, Check, CheckContext, DupPatternsCheck, FilesCheck, NotOwnedCheck,
+    SyntaxCheck,
 };
 
 #[tokio::main]
@@ -95,7 +98,6 @@ fn init_tracing(verbosity: u8, json_output: bool) {
 
 /// Run the validator with the given arguments.
 async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
-    let use_colors = !args.json && io::stdout().is_terminal();
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
 
@@ -103,10 +105,13 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
     let config = match ValidatedConfig::from_args(&args) {
         Ok(config) => config,
         Err(e) => {
+            let use_colors = !args.json && io::stdout().is_terminal();
             write_error(&mut stderr, &e.to_string(), use_colors);
             return ExitCode::StartupFailure;
         }
     };
+
+    let use_colors = !config.json_output && io::stdout().is_terminal();
 
     debug!("Validated configuration: {:?}", config);
     info!("Repository path: {}", config.repo_path.display());
@@ -133,9 +138,9 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
 
     if !parse_result.is_ok() {
         // Report parse errors
-        if args.json {
+        if config.json_output {
             let mut results = ValidationResults::new();
-            let validation_result = codeowners_validator::ValidationResult::new();
+            let validation_result = codeowners_validator_core::ValidationResult::new();
             for error in &parse_result.errors {
                 // Convert parse errors to a simple message for now
                 warn!("Parse error: {}", error);
@@ -160,7 +165,7 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
     }
 
     // Create GitHub client if needed
-    let octocrab = if args.should_run_check(CheckKind::Owners) {
+    let octocrab = if config.checks.contains(&CheckKind::Owners) {
         match create_octocrab(&args).await {
             Ok(client) => client,
             Err(e) => {
@@ -198,12 +203,16 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
             CheckKind::Owners => {
                 if let Some(ref octo) = octocrab {
                     info!("Running owners check...");
-                    use codeowners_validator::validate::checks::{AsyncCheck, AsyncCheckContext, OwnersCheck};
+                    use codeowners_validator_core::validate::checks::{
+                        AsyncCheck, AsyncCheckContext, OwnersCheck,
+                    };
+                    use codeowners_validator_core::validate::github_client::GithubClient;
+                    let github_client: &dyn GithubClient = octo;
                     let async_ctx = AsyncCheckContext::new(
                         &parse_result.ast,
                         &config.repo_path,
                         &config.check_config,
-                        octo,
+                        github_client,
                     );
                     ("owners", OwnersCheck::new().run(&async_ctx).await)
                 } else {
@@ -239,7 +248,7 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
     }
 
     // Output results
-    if args.json {
+    if config.json_output {
         if let Err(e) = results.write_json(&mut stdout) {
             error!("Failed to write JSON output: {}", e);
             return ExitCode::StartupFailure;
@@ -263,5 +272,3 @@ fn write_error<W: Write>(writer: &mut W, message: &str, use_colors: bool) {
         let _ = writeln!(writer, "Error: {}", message);
     }
 }
-
-use codeowners_validator::validate::checks::Check;
