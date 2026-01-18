@@ -252,11 +252,9 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
             error!("Failed to write JSON output: {}", e);
             return ExitCode::StartupFailure;
         }
-    } else {
-        if let Err(e) = results.write_human(&mut stdout, use_colors) {
-            error!("Failed to write output: {}", e);
-            return ExitCode::StartupFailure;
-        }
+    } else if let Err(e) = results.write_human(&mut stdout, use_colors) {
+        error!("Failed to write output: {}", e);
+        return ExitCode::StartupFailure;
     }
 
     // Determine exit code
