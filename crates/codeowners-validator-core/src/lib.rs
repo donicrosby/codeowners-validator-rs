@@ -58,6 +58,8 @@ pub mod parse;
 pub mod validate;
 
 // Re-export commonly used types at the crate root
-pub use parse::{parse_codeowners, CodeownersFile, ParseResult};
-pub use validate::checks::{AsyncCheck, AsyncCheckContext, Check, CheckConfig, CheckContext, CheckRunner};
-pub use validate::{validate_syntax, ValidationResult};
+pub use parse::{CodeownersFile, ParseResult, parse_codeowners};
+pub use validate::checks::{
+    AsyncCheck, AsyncCheckContext, Check, CheckConfig, CheckContext, CheckRunner,
+};
+pub use validate::{ValidationResult, validate_syntax};

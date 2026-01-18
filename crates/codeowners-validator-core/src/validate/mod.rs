@@ -32,9 +32,6 @@ mod syntax;
 // Re-export public types
 pub use error::{Severity, ValidationError, ValidationResult};
 pub use syntax::{
-    validate_all_owners,
-    validate_all_patterns,
-    validate_owner_syntax,
-    validate_pattern_syntax,
+    validate_all_owners, validate_all_patterns, validate_owner_syntax, validate_pattern_syntax,
     validate_syntax,
 };

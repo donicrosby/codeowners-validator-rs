@@ -185,14 +185,28 @@ mod tests {
     #[test]
     fn parse_error_expected_owner() {
         let error = ParseError::expected_owner(test_span());
-        assert!(matches!(error, ParseError::ExpectedOwner { line: 2, column: 5, .. }));
+        assert!(matches!(
+            error,
+            ParseError::ExpectedOwner {
+                line: 2,
+                column: 5,
+                ..
+            }
+        ));
         assert!(error.to_string().contains("expected owner"));
     }
 
     #[test]
     fn parse_error_expected_pattern() {
         let error = ParseError::expected_pattern(test_span());
-        assert!(matches!(error, ParseError::ExpectedPattern { line: 2, column: 5, .. }));
+        assert!(matches!(
+            error,
+            ParseError::ExpectedPattern {
+                line: 2,
+                column: 5,
+                ..
+            }
+        ));
         assert!(error.to_string().contains("expected file pattern"));
     }
 

@@ -113,7 +113,14 @@ fn validate_codeowners(
     let result_dict = PyDict::new(py);
 
     // Initialize empty lists for all possible checks
-    for check_name in &["syntax", "files", "duppatterns", "owners", "notowned", "avoid-shadowing"] {
+    for check_name in &[
+        "syntax",
+        "files",
+        "duppatterns",
+        "owners",
+        "notowned",
+        "avoid-shadowing",
+    ] {
         let empty_list: Vec<HashMap<String, Py<PyAny>>> = vec![];
         result_dict.set_item(*check_name, empty_list)?;
     }
@@ -197,14 +204,19 @@ fn validate_with_github<'py>(
     let github_client = github_client.unbind();
     let config_dict: Option<HashMap<String, Py<PyAny>>> = config.map(|c| {
         c.iter()
-            .filter_map(|(k, v)| {
-                k.extract::<String>().ok().map(|key| (key, v.unbind()))
-            })
+            .filter_map(|(k, v)| k.extract::<String>().ok().map(|key| (key, v.unbind())))
             .collect()
     });
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        validate_with_github_impl(&content, &repo_path, &github_client, config_dict.as_ref(), checks).await
+        validate_with_github_impl(
+            &content,
+            &repo_path,
+            &github_client,
+            config_dict.as_ref(),
+            checks,
+        )
+        .await
     })
 }
 
@@ -219,40 +231,38 @@ async fn validate_with_github_impl(
     let parse_result = codeowners_validator_core::parse::parse_codeowners(content);
 
     // Build check config from Python dict
-    let check_config = Python::attach(|py| {
-        match config {
-            Some(cfg) => {
-                let mut config = codeowners_validator_core::validate::checks::CheckConfig::new();
+    let check_config = Python::attach(|py| match config {
+        Some(cfg) => {
+            let mut config = codeowners_validator_core::validate::checks::CheckConfig::new();
 
-                if let Some(obj) = cfg.get("ignored_owners") {
-                    if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
-                        config = config.with_ignored_owners(list.into_iter().collect());
-                    }
+            if let Some(obj) = cfg.get("ignored_owners") {
+                if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
+                    config = config.with_ignored_owners(list.into_iter().collect());
                 }
-                if let Some(obj) = cfg.get("owners_must_be_teams") {
-                    if let Ok(val) = obj.bind(py).extract::<bool>() {
-                        config = config.with_owners_must_be_teams(val);
-                    }
-                }
-                if let Some(obj) = cfg.get("allow_unowned_patterns") {
-                    if let Ok(val) = obj.bind(py).extract::<bool>() {
-                        config = config.with_allow_unowned_patterns(val);
-                    }
-                }
-                if let Some(obj) = cfg.get("skip_patterns") {
-                    if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
-                        config = config.with_skip_patterns(list);
-                    }
-                }
-                if let Some(obj) = cfg.get("repository") {
-                    if let Ok(val) = obj.bind(py).extract::<String>() {
-                        config = config.with_repository(val);
-                    }
-                }
-                config
             }
-            None => codeowners_validator_core::validate::checks::CheckConfig::new(),
+            if let Some(obj) = cfg.get("owners_must_be_teams") {
+                if let Ok(val) = obj.bind(py).extract::<bool>() {
+                    config = config.with_owners_must_be_teams(val);
+                }
+            }
+            if let Some(obj) = cfg.get("allow_unowned_patterns") {
+                if let Ok(val) = obj.bind(py).extract::<bool>() {
+                    config = config.with_allow_unowned_patterns(val);
+                }
+            }
+            if let Some(obj) = cfg.get("skip_patterns") {
+                if let Ok(list) = obj.bind(py).extract::<Vec<String>>() {
+                    config = config.with_skip_patterns(list);
+                }
+            }
+            if let Some(obj) = cfg.get("repository") {
+                if let Ok(val) = obj.bind(py).extract::<String>() {
+                    config = config.with_repository(val);
+                }
+            }
+            config
         }
+        None => codeowners_validator_core::validate::checks::CheckConfig::new(),
     });
 
     // Determine which checks to run
@@ -281,7 +291,10 @@ async fn validate_with_github_impl(
     let ctx = CheckContext::new(&parse_result.ast, repo_path, &check_config);
 
     // Collect sync check results
-    let mut sync_results: Vec<(String, Vec<codeowners_validator_core::validate::ValidationError>)> = Vec::new();
+    let mut sync_results: Vec<(
+        String,
+        Vec<codeowners_validator_core::validate::ValidationError>,
+    )> = Vec::new();
 
     for check_name in &checks_to_run {
         if check_name == "owners" {
@@ -307,13 +320,14 @@ async fn validate_with_github_impl(
 
     // Run async owners check if requested
     let owners_errors = if checks_to_run.contains(&"owners".to_string()) {
-        let py_client = Python::attach(|py| {
-            PyGithubClient::new(github_client.clone_ref(py))
-        });
+        let py_client = Python::attach(|py| PyGithubClient::new(github_client.clone_ref(py)));
 
-        use codeowners_validator_core::validate::checks::{AsyncCheck, AsyncCheckContext, OwnersCheck};
+        use codeowners_validator_core::validate::checks::{
+            AsyncCheck, AsyncCheckContext, OwnersCheck,
+        };
 
-        let async_ctx = AsyncCheckContext::new(&parse_result.ast, repo_path, &check_config, &py_client);
+        let async_ctx =
+            AsyncCheckContext::new(&parse_result.ast, repo_path, &check_config, &py_client);
         let validation_result = OwnersCheck::new().run(&async_ctx).await;
         validation_result.errors
     } else {
@@ -325,7 +339,14 @@ async fn validate_with_github_impl(
         let result_dict = PyDict::new(py);
 
         // Initialize empty lists for all possible checks
-        for check_name in &["syntax", "files", "duppatterns", "owners", "notowned", "avoid-shadowing"] {
+        for check_name in &[
+            "syntax",
+            "files",
+            "duppatterns",
+            "owners",
+            "notowned",
+            "avoid-shadowing",
+        ] {
             let empty_list: Vec<HashMap<String, Py<PyAny>>> = vec![];
             result_dict.set_item(*check_name, empty_list)?;
         }

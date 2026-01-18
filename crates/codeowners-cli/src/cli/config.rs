@@ -4,12 +4,12 @@
 //! and handles GitHub authentication setup.
 
 use super::{Args, CheckKind, ExperimentalCheckKind, FailureLevel};
-use codeowners_validator_core::validate::checks::CheckConfig;
 #[cfg(test)]
 use codeowners_validator_core::validate::Severity;
+use codeowners_validator_core::validate::checks::CheckConfig;
 use jsonwebtoken::EncodingKey;
-use octocrab::models::{AppId, InstallationId};
 use octocrab::Octocrab;
+use octocrab::models::{AppId, InstallationId};
 use std::path::Path;
 use thiserror::Error;
 
@@ -201,9 +201,9 @@ pub async fn create_octocrab(args: &Args) -> Result<Option<Octocrab>, ConfigErro
             .map_err(|e| ConfigError::GitHubAuth(format!("failed to create app client: {}", e)))?;
 
         // Get installation-specific client
-        let client = app_client
-            .installation(installation_id)
-            .map_err(|e| ConfigError::GitHubAuth(format!("failed to get installation client: {}", e)))?;
+        let client = app_client.installation(installation_id).map_err(|e| {
+            ConfigError::GitHubAuth(format!("failed to get installation client: {}", e))
+        })?;
 
         Ok(Some(client))
     } else if let Some(ref token) = args.github_access_token {
@@ -362,10 +362,7 @@ mod tests {
         let config = ValidatedConfig::from_args(&args).unwrap();
 
         // Warnings don't fail with error level
-        assert_eq!(
-            config.exit_code_for_results(false, true),
-            ExitCode::Success
-        );
+        assert_eq!(config.exit_code_for_results(false, true), ExitCode::Success);
 
         // Errors still fail
         assert_eq!(
@@ -386,10 +383,12 @@ mod tests {
         ]);
         let result = ValidatedConfig::from_args(&args);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("OWNER_CHECKER_REPOSITORY"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("OWNER_CHECKER_REPOSITORY")
+        );
     }
 
     #[test]

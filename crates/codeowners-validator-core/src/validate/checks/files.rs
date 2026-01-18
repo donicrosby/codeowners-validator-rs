@@ -3,8 +3,8 @@
 //! This check verifies that patterns in CODEOWNERS actually match files in the repository.
 
 use super::{Check, CheckContext};
-use crate::parse::LineKind;
 use crate::matching::Pattern;
+use crate::parse::LineKind;
 use crate::validate::{ValidationError, ValidationResult};
 use log::{debug, trace};
 use std::path::Path;
@@ -29,7 +29,7 @@ impl FilesCheck {
     fn list_files(repo_path: &Path) -> Vec<String> {
         debug!("Listing files in repository: {:?}", repo_path);
         let mut files = Vec::new();
-        
+
         for entry in WalkDir::new(repo_path)
             .follow_links(false)
             .into_iter()
@@ -51,16 +51,17 @@ impl FilesCheck {
             if entry.path() == repo_path {
                 continue;
             }
-            
+
             // Get path relative to repo root
             if let Ok(relative) = entry.path().strip_prefix(repo_path)
-                && let Some(path_str) = relative.to_str() {
-                    // Normalize to forward slashes
-                    let normalized = path_str.replace('\\', "/");
-                    files.push(normalized);
-                }
+                && let Some(path_str) = relative.to_str()
+            {
+                // Normalize to forward slashes
+                let normalized = path_str.replace('\\', "/");
+                files.push(normalized);
+            }
         }
-        
+
         debug!("Found {} files in repository", files.len());
         trace!("Files: {:?}", files);
         files
@@ -85,27 +86,28 @@ impl Check for FilesCheck {
     fn run(&self, ctx: &CheckContext) -> ValidationResult {
         debug!("Running files check");
         let mut result = ValidationResult::new();
-        
+
         // List all files in the repository
         let files = Self::list_files(ctx.repo_path);
-        
+
         // Check each pattern
         for line in &ctx.file.lines {
             if let LineKind::Rule { pattern, .. } = &line.kind {
                 trace!("Checking pattern: {}", pattern.text);
                 // Compile the pattern
                 if let Some(compiled) = Pattern::new(&pattern.text)
-                    && !Self::pattern_matches_any(&compiled, &files) {
-                        debug!("Pattern '{}' does not match any files", pattern.text);
-                        result.add_error(ValidationError::pattern_not_matching(
-                            &pattern.text,
-                            pattern.span,
-                        ));
-                    }
+                    && !Self::pattern_matches_any(&compiled, &files)
+                {
+                    debug!("Pattern '{}' does not match any files", pattern.text);
+                    result.add_error(ValidationError::pattern_not_matching(
+                        &pattern.text,
+                        pattern.span,
+                    ));
+                }
                 // If pattern compilation fails, that's a syntax error handled elsewhere
             }
         }
-        
+
         debug!("Files check complete: {} errors found", result.errors.len());
         result
     }
@@ -121,16 +123,16 @@ mod tests {
 
     fn setup_test_dir() -> TempDir {
         let dir = TempDir::new().unwrap();
-        
+
         // Create some test files
         fs::create_dir_all(dir.path().join("src")).unwrap();
         fs::create_dir_all(dir.path().join("docs")).unwrap();
-        
+
         File::create(dir.path().join("src/main.rs")).unwrap();
         File::create(dir.path().join("src/lib.rs")).unwrap();
         File::create(dir.path().join("docs/README.md")).unwrap();
         File::create(dir.path().join("Cargo.toml")).unwrap();
-        
+
         dir
     }
 
@@ -145,7 +147,10 @@ mod tests {
     fn pattern_matches_existing_files() {
         let dir = setup_test_dir();
         let result = run_check("*.rs @owner\n", dir.path());
-        assert!(result.is_ok(), "Pattern *.rs should match src/main.rs and src/lib.rs");
+        assert!(
+            result.is_ok(),
+            "Pattern *.rs should match src/main.rs and src/lib.rs"
+        );
     }
 
     #[test]
@@ -160,7 +165,7 @@ mod tests {
         let dir = setup_test_dir();
         let result = run_check("/nonexistent/ @owner\n", dir.path());
         assert!(result.has_errors());
-        
+
         match &result.errors[0] {
             ValidationError::PatternNotMatching { pattern, .. } => {
                 assert_eq!(pattern, "/nonexistent/");
@@ -202,10 +207,10 @@ mod tests {
         let dir = setup_test_dir();
         let result = run_check(
             "*.rs @rust\n/nonexistent/ @nobody\n/docs/ @docs\n",
-            dir.path()
+            dir.path(),
         );
         assert_eq!(result.errors.len(), 1);
-        
+
         match &result.errors[0] {
             ValidationError::PatternNotMatching { pattern, .. } => {
                 assert_eq!(pattern, "/nonexistent/");
@@ -226,7 +231,7 @@ mod tests {
     fn list_files_basic() {
         let dir = setup_test_dir();
         let files = FilesCheck::list_files(dir.path());
-        
+
         assert!(files.contains(&"src/main.rs".to_string()));
         assert!(files.contains(&"src/lib.rs".to_string()));
         assert!(files.contains(&"docs/README.md".to_string()));
@@ -240,9 +245,9 @@ mod tests {
         File::create(dir.path().join(".git/config")).unwrap();
         File::create(dir.path().join(".gitignore")).unwrap();
         File::create(dir.path().join("visible.rs")).unwrap();
-        
+
         let files = FilesCheck::list_files(dir.path());
-        
+
         assert!(files.contains(&"visible.rs".to_string()));
         assert!(!files.iter().any(|f| f.contains(".git")));
         assert!(!files.contains(&".gitignore".to_string()));

@@ -4,8 +4,8 @@
 //! later, more-specific patterns in a CODEOWNERS file.
 
 use super::{Check, CheckContext};
-use crate::parse::LineKind;
 use crate::matching::Pattern;
+use crate::parse::LineKind;
 use crate::validate::{ValidationError, ValidationResult};
 
 /// A check that detects pattern shadowing.
@@ -80,11 +80,13 @@ impl AvoidShadowingCheck {
         if general_trimmed.contains('*') {
             // Extract the non-wildcard suffix
             if let Some(suffix) = general_trimmed.strip_prefix('*')
-                && specific_trimmed.ends_with(suffix) {
-                    return true;
-                }
+                && specific_trimmed.ends_with(suffix)
+            {
+                return true;
+            }
             // Check if specific contains the same extension pattern
-            if general_trimmed.starts_with("*.") && specific_trimmed.contains(&general_trimmed[1..]) {
+            if general_trimmed.starts_with("*.") && specific_trimmed.contains(&general_trimmed[1..])
+            {
                 return true;
             }
         }
@@ -99,9 +101,10 @@ impl AvoidShadowingCheck {
             let specific_first = specific_parts.iter().find(|p| !p.contains('*'));
 
             if let (Some(g), Some(s)) = (general_first, specific_first)
-                && g == s {
-                    return true;
-                }
+                && g == s
+            {
+                return true;
+            }
         }
 
         false
@@ -129,14 +132,15 @@ impl Check for AvoidShadowingCheck {
 
         for line in &ctx.file.lines {
             if let LineKind::Rule { pattern, .. } = &line.kind
-                && let Some(compiled) = Pattern::new(&pattern.text) {
-                    patterns.push(CompiledPattern {
-                        text: pattern.text.clone(),
-                        specificity: compiled.specificity(),
-                        line: line.span.line,
-                        span: pattern.span,
-                    });
-                }
+                && let Some(compiled) = Pattern::new(&pattern.text)
+            {
+                patterns.push(CompiledPattern {
+                    text: pattern.text.clone(),
+                    specificity: compiled.specificity(),
+                    line: line.span.line,
+                    span: pattern.span,
+                });
+            }
         }
 
         // Check for shadowing: compare each pattern with all subsequent patterns

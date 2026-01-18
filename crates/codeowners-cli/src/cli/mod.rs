@@ -29,7 +29,11 @@ pub struct Args {
     pub github_access_token: Option<String>,
 
     /// GitHub base URL for API requests (for GitHub Enterprise).
-    #[arg(long, env = "GITHUB_BASE_URL", default_value = "https://api.github.com/")]
+    #[arg(
+        long,
+        env = "GITHUB_BASE_URL",
+        default_value = "https://api.github.com/"
+    )]
     pub github_base_url: String,
 
     /// GitHub upload URL (defaults to base URL if not specified).
@@ -73,11 +77,19 @@ pub struct Args {
     pub owner_checker_ignored_owners: Option<Vec<String>>,
 
     /// Allow patterns without owners in the CODEOWNERS file.
-    #[arg(long, env = "OWNER_CHECKER_ALLOW_UNOWNED_PATTERNS", default_value = "true")]
+    #[arg(
+        long,
+        env = "OWNER_CHECKER_ALLOW_UNOWNED_PATTERNS",
+        default_value = "true"
+    )]
     pub owner_checker_allow_unowned_patterns: bool,
 
     /// Require all owners to be teams (@org/team), not individual users.
-    #[arg(long, env = "OWNER_CHECKER_OWNERS_MUST_BE_TEAMS", default_value = "false")]
+    #[arg(
+        long,
+        env = "OWNER_CHECKER_OWNERS_MUST_BE_TEAMS",
+        default_value = "false"
+    )]
     pub owner_checker_owners_must_be_teams: bool,
 
     /// Comma-separated patterns to skip in the not-owned checker.
@@ -252,11 +264,7 @@ mod tests {
         assert!(!args.has_github_auth());
 
         // Token auth
-        let args = Args::parse_from([
-            "codeowners-validator",
-            "--github-access-token",
-            "ghp_test",
-        ]);
+        let args = Args::parse_from(["codeowners-validator", "--github-access-token", "ghp_test"]);
         assert!(args.has_github_auth());
         assert!(!args.has_github_app_auth());
     }

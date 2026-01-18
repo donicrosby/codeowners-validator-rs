@@ -31,8 +31,10 @@ pub mod span;
 // Re-export public types
 pub use ast::{CodeownersFile, Line, LineKind, Owner, Pattern};
 pub use error::{ParseError, ParseResult};
-pub use parser::{parse_codeowners, parse_codeowners_strict, parse_codeowners_with_config, ParserConfig};
+pub use parser::{
+    ParserConfig, parse_codeowners, parse_codeowners_strict, parse_codeowners_with_config,
+};
 pub use span::Span;
 
 // Re-export lexer utilities that may be useful for custom parsing
-pub use lexer::{classify_owner, OwnerKind};
+pub use lexer::{OwnerKind, classify_owner};

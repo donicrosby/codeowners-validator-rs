@@ -6,8 +6,7 @@
 use super::ast::{CodeownersFile, Line, Owner};
 use super::error::{ParseError, ParseResult};
 use super::lexer::{
-    is_blank_line, make_owner, make_pattern, parse_comment_line,
-    parse_rule_components,
+    is_blank_line, make_owner, make_pattern, parse_comment_line, parse_rule_components,
 };
 use super::span::Span;
 use log::{debug, trace};
@@ -71,12 +70,8 @@ fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Li
                 .iter()
                 .zip(components.owner_offsets.iter())
                 .map(|(owner_text, &offset)| {
-                    let owner_span = Span::new(
-                        line_offset + offset,
-                        line_num,
-                        offset + 1,
-                        owner_text.len(),
-                    );
+                    let owner_span =
+                        Span::new(line_offset + offset, line_num, offset + 1, owner_text.len());
                     make_owner(owner_text, owner_span)
                 })
                 .collect();
@@ -100,7 +95,11 @@ fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Li
 
 /// Parses a CODEOWNERS file with the given configuration.
 pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> ParseResult {
-    debug!("Parsing CODEOWNERS file ({} bytes, strict={})", input.len(), config.strict);
+    debug!(
+        "Parsing CODEOWNERS file ({} bytes, strict={})",
+        input.len(),
+        config.strict
+    );
     let mut lines = Vec::new();
     let mut errors = Vec::new();
     let mut offset = 0;
@@ -134,10 +133,14 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
 
     // Handle case where file doesn't end with newline
     // (the lines iterator doesn't include the trailing newline)
-    
+
     let ast = CodeownersFile::new(lines);
-    
-    debug!("Parsing complete: {} lines, {} errors", ast.lines.len(), errors.len());
+
+    debug!(
+        "Parsing complete: {} lines, {} errors",
+        ast.lines.len(),
+        errors.len()
+    );
     if errors.is_empty() {
         ParseResult::ok(ast)
     } else {
@@ -172,7 +175,7 @@ mod tests {
         let input = "\n   \n\t\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         for line in &result.ast.lines {
             assert!(line.is_blank());
         }
@@ -185,7 +188,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.ast.lines.len(), 1);
         assert!(result.ast.lines[0].is_comment());
-        
+
         if let LineKind::Comment { content } = &result.ast.lines[0].kind {
             assert_eq!(content, " This is a comment");
         } else {
@@ -207,10 +210,10 @@ mod tests {
         let result = parse_codeowners(input);
         assert!(result.is_ok());
         assert_eq!(result.ast.lines.len(), 1);
-        
+
         let line = &result.ast.lines[0];
         assert!(line.is_rule());
-        
+
         if let LineKind::Rule { pattern, owners } = &line.kind {
             assert_eq!(pattern.text, "*.rs");
             assert_eq!(owners.len(), 1);
@@ -225,13 +228,15 @@ mod tests {
         let input = "/src/ @dev @github/core dev@example.com\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         let line = &result.ast.lines[0];
         if let LineKind::Rule { pattern, owners } = &line.kind {
             assert_eq!(pattern.text, "/src/");
             assert_eq!(owners.len(), 3);
             assert!(matches!(&owners[0], Owner::User { name, .. } if name == "dev"));
-            assert!(matches!(&owners[1], Owner::Team { org, team, .. } if org == "github" && team == "core"));
+            assert!(
+                matches!(&owners[1], Owner::Team { org, team, .. } if org == "github" && team == "core")
+            );
             assert!(matches!(&owners[2], Owner::Email { email, .. } if email == "dev@example.com"));
         } else {
             panic!("Expected rule");
@@ -243,7 +248,7 @@ mod tests {
         let input = "**/*.js @frontend\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         let line = &result.ast.lines[0];
         if let LineKind::Rule { pattern, .. } = &line.kind {
             assert_eq!(pattern.text, "**/*.js");
@@ -264,7 +269,7 @@ mod tests {
         let result = parse_codeowners(input);
         assert!(result.is_ok());
         assert_eq!(result.ast.lines.len(), 7);
-        
+
         // Line 1: comment
         assert!(result.ast.lines[0].is_comment());
         // Line 2: blank
@@ -285,7 +290,7 @@ mod tests {
     fn parse_rule_missing_owner_lenient() {
         let input = "*.rs\n*.js @frontend\n";
         let result = parse_codeowners(input);
-        
+
         // Lenient mode should continue and collect error
         assert!(result.has_errors());
         assert_eq!(result.ast.lines.len(), 2);
@@ -297,7 +302,7 @@ mod tests {
     fn parse_rule_missing_owner_strict() {
         let input = "*.rs\n*.js @frontend\n";
         let result = parse_codeowners_strict(input);
-        
+
         // Strict mode should stop at first error
         assert!(result.has_errors());
         assert_eq!(result.errors.len(), 1);
@@ -308,12 +313,12 @@ mod tests {
         let input = "*.rs @owner\n/docs/ @team\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         // First line
         let line1 = &result.ast.lines[0];
         assert_eq!(line1.span.line, 1);
         assert_eq!(line1.span.offset, 0);
-        
+
         // Second line
         let line2 = &result.ast.lines[1];
         assert_eq!(line2.span.line, 2);
@@ -325,7 +330,7 @@ mod tests {
         let input = "  *.rs @owner\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         if let LineKind::Rule { pattern, .. } = &result.ast.lines[0].kind {
             assert_eq!(pattern.span.column, 3); // After 2 spaces
             assert_eq!(pattern.span.length, 4); // "*.rs"
@@ -339,14 +344,14 @@ mod tests {
         let input = "*.rs @alice @bob\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         if let LineKind::Rule { owners, .. } = &result.ast.lines[0].kind {
             assert_eq!(owners.len(), 2);
-            
+
             // @alice starts at column 6 (after "*.rs ")
             assert_eq!(owners[0].span().column, 6);
             assert_eq!(owners[0].span().length, 6); // "@alice"
-            
+
             // @bob starts at column 13 (after "*.rs @alice ")
             assert_eq!(owners[1].span().column, 13);
             assert_eq!(owners[1].span().length, 4); // "@bob"
@@ -360,7 +365,7 @@ mod tests {
         let input = "# comment\n*.rs @rust\n*.js @js\n";
         let result = parse_codeowners(input);
         assert!(result.is_ok());
-        
+
         let rules = result.ast.extract_rules();
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].0.text, "*.rs");

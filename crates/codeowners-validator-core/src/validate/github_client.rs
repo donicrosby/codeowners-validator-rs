@@ -132,7 +132,11 @@ pub trait GithubClient: Send + Sync {
     /// * `Ok(TeamExistsResult::NotFound)` - The team was not found
     /// * `Ok(TeamExistsResult::Unauthorized)` - Insufficient permissions to check
     /// * `Err(GithubClientError)` - An error occurred
-    async fn team_exists(&self, org: &str, team: &str) -> Result<TeamExistsResult, GithubClientError>;
+    async fn team_exists(
+        &self,
+        org: &str,
+        team: &str,
+    ) -> Result<TeamExistsResult, GithubClientError>;
 }
 
 #[cfg(test)]

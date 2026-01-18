@@ -4,8 +4,8 @@
 //! by any CODEOWNERS rule.
 
 use super::{Check, CheckContext};
-use crate::parse::LineKind;
 use crate::matching::Pattern;
+use crate::parse::LineKind;
 use crate::validate::{ValidationError, ValidationResult};
 use std::path::Path;
 use walkdir::WalkDir;
@@ -56,11 +56,12 @@ impl NotOwnedCheck {
 
             // Get path relative to repo root
             if let Ok(relative) = entry.path().strip_prefix(repo_path)
-                && let Some(path_str) = relative.to_str() {
-                    // Normalize to forward slashes
-                    let normalized = path_str.replace('\\', "/");
-                    files.push(normalized);
-                }
+                && let Some(path_str) = relative.to_str()
+            {
+                // Normalize to forward slashes
+                let normalized = path_str.replace('\\', "/");
+                files.push(normalized);
+            }
         }
 
         files
@@ -99,9 +100,10 @@ impl Check for NotOwnedCheck {
         let mut patterns: Vec<Pattern> = Vec::new();
         for line in &ctx.file.lines {
             if let LineKind::Rule { pattern, .. } = &line.kind
-                && let Some(compiled) = Pattern::new(&pattern.text) {
-                    patterns.push(compiled);
-                }
+                && let Some(compiled) = Pattern::new(&pattern.text)
+            {
+                patterns.push(compiled);
+            }
         }
 
         // Compile skip patterns from config
@@ -164,7 +166,11 @@ mod tests {
         NotOwnedCheck::new().run(&ctx)
     }
 
-    fn run_check_with_config(input: &str, repo_path: &Path, config: CheckConfig) -> ValidationResult {
+    fn run_check_with_config(
+        input: &str,
+        repo_path: &Path,
+        config: CheckConfig,
+    ) -> ValidationResult {
         let file = parse_codeowners(input).ast;
         let ctx = CheckContext::new(&file, repo_path, &config);
         NotOwnedCheck::new().run(&ctx)
@@ -201,7 +207,10 @@ mod tests {
     #[test]
     fn directory_pattern_covers_contents() {
         let dir = setup_test_dir();
-        let result = run_check("/src/ @dev\n/docs/ @docs\n/tests/ @qa\n/Cargo.toml @dev\n", dir.path());
+        let result = run_check(
+            "/src/ @dev\n/docs/ @docs\n/tests/ @qa\n/Cargo.toml @dev\n",
+            dir.path(),
+        );
         assert!(result.is_ok());
     }
 
@@ -268,10 +277,7 @@ mod tests {
     #[test]
     fn multiple_patterns_combine() {
         let dir = setup_test_dir();
-        let result = run_check(
-            "*.rs @rust\n*.md @docs\n*.toml @config\n",
-            dir.path(),
-        );
+        let result = run_check("*.rs @rust\n*.md @docs\n*.toml @config\n", dir.path());
         assert!(result.is_ok());
     }
 

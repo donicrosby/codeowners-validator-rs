@@ -28,14 +28,14 @@ impl Check for DupPatternsCheck {
 
     fn run(&self, ctx: &CheckContext) -> ValidationResult {
         let mut result = ValidationResult::new();
-        
+
         // Track patterns we've seen: pattern text -> (first line number, first span)
         let mut seen: HashMap<&str, (usize, crate::parse::Span)> = HashMap::new();
-        
+
         for line in &ctx.file.lines {
             if let LineKind::Rule { pattern, .. } = &line.kind {
                 let pattern_text = pattern.text.as_str();
-                
+
                 if let Some(&(first_line, _)) = seen.get(pattern_text) {
                     // Found a duplicate
                     result.add_error(ValidationError::duplicate_pattern(
@@ -49,7 +49,7 @@ impl Check for DupPatternsCheck {
                 }
             }
         }
-        
+
         result
     }
 }
@@ -80,9 +80,14 @@ mod tests {
         let result = run_check("*.rs @owner1\n*.rs @owner2\n");
         assert!(result.has_errors());
         assert_eq!(result.errors.len(), 1);
-        
+
         match &result.errors[0] {
-            ValidationError::DuplicatePattern { pattern, line, first_line, .. } => {
+            ValidationError::DuplicatePattern {
+                pattern,
+                line,
+                first_line,
+                ..
+            } => {
                 assert_eq!(pattern, "*.rs");
                 assert_eq!(*line, 2);
                 assert_eq!(*first_line, 1);

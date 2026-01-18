@@ -35,47 +35,54 @@ impl PyGithubClient {
     ) -> Result<Py<PyAny>, GithubClientError> {
         let client = Python::attach(|py| self.client.clone_ref(py));
         let method_name = method_name.to_string();
-        
+
         // Call the Python method and check if it returns a coroutine.
         // If it's a coroutine, convert it to a future inside the GIL.
         // We use Option to distinguish between a future (Some) and a sync result (None).
-        type BoxedFuture = std::pin::Pin<Box<dyn std::future::Future<Output = PyResult<Py<PyAny>>> + Send>>;
-        
-        let (maybe_future, maybe_result): (Option<BoxedFuture>, Option<Py<PyAny>>) = Python::attach(|py| -> Result<(Option<BoxedFuture>, Option<Py<PyAny>>), GithubClientError> {
-            let client = client.bind(py);
+        type BoxedFuture =
+            std::pin::Pin<Box<dyn std::future::Future<Output = PyResult<Py<PyAny>>> + Send>>;
 
-            // Check if the method exists
-            if !client.hasattr(&method_name).map_err(py_err_to_github_err)? {
-                return Err(GithubClientError::Other(format!(
-                    "GitHub client does not have {} method",
-                    method_name
-                )));
-            }
+        let (maybe_future, maybe_result): (Option<BoxedFuture>, Option<Py<PyAny>>) =
+            Python::attach(
+                |py| -> Result<(Option<BoxedFuture>, Option<Py<PyAny>>), GithubClientError> {
+                    let client = client.bind(py);
 
-            // Build args tuple
-            let py_args = pyo3::types::PyTuple::new(py, args.iter().map(|s| s.as_str())).map_err(py_err_to_github_err)?;
+                    // Check if the method exists
+                    if !client.hasattr(&method_name).map_err(py_err_to_github_err)? {
+                        return Err(GithubClientError::Other(format!(
+                            "GitHub client does not have {} method",
+                            method_name
+                        )));
+                    }
 
-            // Call the method
-            let result = client
-                .call_method1(&method_name, py_args)
-                .map_err(py_err_to_github_err)?;
+                    // Build args tuple
+                    let py_args = pyo3::types::PyTuple::new(py, args.iter().map(|s| s.as_str()))
+                        .map_err(py_err_to_github_err)?;
 
-            // Check if it's a coroutine
-            let is_coroutine = result.hasattr("__await__").map_err(py_err_to_github_err)?;
-            
-            if is_coroutine {
-                // Convert the coroutine to a future inside the GIL
-                let future = pyo3_async_runtimes::tokio::into_future(result)
-                    .map_err(py_err_to_github_err)?;
-                Ok((Some(Box::pin(future)), None))
-            } else {
-                // It's a regular value, return it directly
-                Ok((None, Some(result.unbind())))
-            }
-        })?;
-        
+                    // Call the method
+                    let result = client
+                        .call_method1(&method_name, py_args)
+                        .map_err(py_err_to_github_err)?;
+
+                    // Check if it's a coroutine
+                    let is_coroutine = result.hasattr("__await__").map_err(py_err_to_github_err)?;
+
+                    if is_coroutine {
+                        // Convert the coroutine to a future inside the GIL
+                        let future = pyo3_async_runtimes::tokio::into_future(result)
+                            .map_err(py_err_to_github_err)?;
+                        Ok((Some(Box::pin(future)), None))
+                    } else {
+                        // It's a regular value, return it directly
+                        Ok((None, Some(result.unbind())))
+                    }
+                },
+            )?;
+
         if let Some(future) = maybe_future {
-            future.await.map_err(|e| GithubClientError::Other(e.to_string()))
+            future
+                .await
+                .map_err(|e| GithubClientError::Other(e.to_string()))
         } else {
             Ok(maybe_result.expect("Either future or result should be Some"))
         }
@@ -85,12 +92,14 @@ impl PyGithubClient {
 #[async_trait]
 impl GithubClient for PyGithubClient {
     async fn user_exists(&self, username: &str) -> Result<UserExistsResult, GithubClientError> {
-        let result = self.call_python_method_async("user_exists", vec![username.to_string()]).await?;
+        let result = self
+            .call_python_method_async("user_exists", vec![username.to_string()])
+            .await?;
 
         // Parse the result
         Python::attach(|py| {
             let result = result.bind(py);
-            
+
             if let Ok(exists) = result.extract::<bool>() {
                 if exists {
                     Ok(UserExistsResult::Exists)
@@ -120,12 +129,14 @@ impl GithubClient for PyGithubClient {
         org: &str,
         team: &str,
     ) -> Result<TeamExistsResult, GithubClientError> {
-        let result = self.call_python_method_async("team_exists", vec![org.to_string(), team.to_string()]).await?;
+        let result = self
+            .call_python_method_async("team_exists", vec![org.to_string(), team.to_string()])
+            .await?;
 
         // Parse the result - team_exists returns a string status
         Python::attach(|py| {
             let result = result.bind(py);
-            
+
             if let Ok(status) = result.extract::<String>() {
                 match status.as_str() {
                     "exists" => Ok(TeamExistsResult::Exists),

@@ -264,7 +264,9 @@ mod tests {
     #[test]
     fn owner_team_creation() {
         let owner = Owner::team("github", "core", test_span());
-        assert!(matches!(&owner, Owner::Team { org, team, .. } if org == "github" && team == "core"));
+        assert!(
+            matches!(&owner, Owner::Team { org, team, .. } if org == "github" && team == "core")
+        );
         assert_eq!(owner.as_str(), "@github/core");
     }
 
@@ -288,7 +290,9 @@ mod tests {
     fn line_comment() {
         let line = Line::comment(" This is a comment", test_span());
         assert!(line.is_comment());
-        assert!(matches!(line.kind, LineKind::Comment { content } if content == " This is a comment"));
+        assert!(
+            matches!(line.kind, LineKind::Comment { content } if content == " This is a comment")
+        );
     }
 
     #[test]
@@ -296,7 +300,7 @@ mod tests {
         let pattern = Pattern::new("*.rs", test_span());
         let owners = vec![Owner::user("rustacean", test_span())];
         let line = Line::rule(pattern, owners, test_span());
-        
+
         assert!(line.is_rule());
         if let LineKind::Rule { pattern, owners } = &line.kind {
             assert_eq!(pattern.text, "*.rs");
@@ -334,10 +338,10 @@ mod tests {
                 test_span(),
             ),
         ];
-        
+
         let file = CodeownersFile::new(lines);
         let rules: Vec<_> = file.rules().collect();
-        
+
         assert_eq!(rules.len(), 2);
         assert!(rules[0].is_rule());
         assert!(rules[1].is_rule());
@@ -345,18 +349,14 @@ mod tests {
 
     #[test]
     fn codeowners_file_has_errors() {
-        let lines_ok = vec![
-            Line::rule(
-                Pattern::new("*", test_span()),
-                vec![Owner::user("owner", test_span())],
-                test_span(),
-            ),
-        ];
-        
-        let lines_with_error = vec![
-            Line::invalid("bad", "error", test_span()),
-        ];
-        
+        let lines_ok = vec![Line::rule(
+            Pattern::new("*", test_span()),
+            vec![Owner::user("owner", test_span())],
+            test_span(),
+        )];
+
+        let lines_with_error = vec![Line::invalid("bad", "error", test_span())];
+
         assert!(!CodeownersFile::new(lines_ok).has_errors());
         assert!(CodeownersFile::new(lines_with_error).has_errors());
     }
@@ -374,10 +374,10 @@ mod tests {
                 test_span(),
             ),
         ];
-        
+
         let file = CodeownersFile::new(lines);
         let rules = file.extract_rules();
-        
+
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].0.text, "/src/");
         assert_eq!(rules[0].1.len(), 2);

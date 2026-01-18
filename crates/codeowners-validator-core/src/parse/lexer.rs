@@ -4,11 +4,10 @@
 //! like patterns, owners, and comments.
 
 use nom::{
+    IResult, Parser,
     bytes::complete::take_while1,
     character::complete::{char, space0, space1},
     combinator::rest,
-    IResult,
-    Parser,
 };
 
 use super::ast::{Owner, Pattern};
@@ -23,7 +22,6 @@ fn is_pattern_char(c: char) -> bool {
 fn is_owner_char(c: char) -> bool {
     !c.is_whitespace() && c != '#'
 }
-
 
 /// Parses a complete comment line (optional whitespace + # + content).
 pub fn parse_comment_line(input: &str) -> IResult<&str, &str> {
@@ -58,29 +56,31 @@ pub fn parse_rule_components(input: &str) -> IResult<&str, RuleComponents<'_>> {
     // Skip leading whitespace
     let (after_ws, leading_ws) = space0(input)?;
     let pattern_offset = leading_ws.len();
-    
+
     // Parse pattern
     let (after_pattern, pattern) = take_while1(is_pattern_char)(after_ws)?;
-    
+
     // Parse separator
     let (after_sep, _) = space1(after_pattern)?;
-    
+
     // Parse owners (one or more)
     let mut owners = Vec::new();
     let mut owner_offsets = Vec::new();
     let mut current = after_sep;
-    let mut current_offset = pattern_offset + pattern.len() + (after_sep.as_ptr() as usize - after_pattern.as_ptr() as usize);
-    
+    let mut current_offset = pattern_offset
+        + pattern.len()
+        + (after_sep.as_ptr() as usize - after_pattern.as_ptr() as usize);
+
     loop {
         // Skip whitespace before owner
         let (after_ws, ws) = space0(current)?;
         current_offset += ws.len();
-        
+
         // Check for comment or end of input
         if after_ws.is_empty() || after_ws.starts_with('#') {
             break;
         }
-        
+
         // Parse owner
         let (after_owner, owner) = take_while1(is_owner_char)(after_ws)?;
         owner_offsets.push(current_offset);
@@ -88,20 +88,23 @@ pub fn parse_rule_components(input: &str) -> IResult<&str, RuleComponents<'_>> {
         current_offset += owner.len();
         current = after_owner;
     }
-    
+
     if owners.is_empty() {
         return Err(nom::Err::Error(nom::error::Error::new(
             input,
             nom::error::ErrorKind::Many1,
         )));
     }
-    
-    Ok((current, RuleComponents {
-        pattern,
-        pattern_offset,
-        owners,
-        owner_offsets,
-    }))
+
+    Ok((
+        current,
+        RuleComponents {
+            pattern,
+            pattern_offset,
+            owners,
+            owner_offsets,
+        },
+    ))
 }
 
 /// Classifies an owner string into its type.
@@ -138,7 +141,7 @@ pub fn classify_owner(text: &str) -> OwnerKind<'_> {
         // Likely an email address
         return OwnerKind::Email(text);
     }
-    
+
     OwnerKind::Unknown(text)
 }
 
@@ -196,18 +199,30 @@ mod tests {
     fn classify_owner_team() {
         assert_eq!(
             classify_owner("@github/core"),
-            OwnerKind::Team { org: "github", team: "core" }
+            OwnerKind::Team {
+                org: "github",
+                team: "core"
+            }
         );
         assert_eq!(
             classify_owner("@my-org/team-name"),
-            OwnerKind::Team { org: "my-org", team: "team-name" }
+            OwnerKind::Team {
+                org: "my-org",
+                team: "team-name"
+            }
         );
     }
 
     #[test]
     fn classify_owner_email() {
-        assert_eq!(classify_owner("dev@example.com"), OwnerKind::Email("dev@example.com"));
-        assert_eq!(classify_owner("user.name@company.co.uk"), OwnerKind::Email("user.name@company.co.uk"));
+        assert_eq!(
+            classify_owner("dev@example.com"),
+            OwnerKind::Email("dev@example.com")
+        );
+        assert_eq!(
+            classify_owner("user.name@company.co.uk"),
+            OwnerKind::Email("user.name@company.co.uk")
+        );
     }
 
     #[test]
@@ -228,9 +243,13 @@ mod tests {
 
     #[test]
     fn parse_rule_components_multiple_owners() {
-        let (_rest, components) = parse_rule_components("/src/ @dev @github/core dev@example.com").unwrap();
+        let (_rest, components) =
+            parse_rule_components("/src/ @dev @github/core dev@example.com").unwrap();
         assert_eq!(components.pattern, "/src/");
-        assert_eq!(components.owners, vec!["@dev", "@github/core", "dev@example.com"]);
+        assert_eq!(
+            components.owners,
+            vec!["@dev", "@github/core", "dev@example.com"]
+        );
     }
 
     #[test]
@@ -242,7 +261,8 @@ mod tests {
 
     #[test]
     fn parse_rule_components_with_trailing_comment() {
-        let (rest, components) = parse_rule_components("*.js @frontend # JavaScript files").unwrap();
+        let (rest, components) =
+            parse_rule_components("*.js @frontend # JavaScript files").unwrap();
         assert_eq!(components.pattern, "*.js");
         assert_eq!(components.owners, vec!["@frontend"]);
         // After parsing, rest should contain " # JavaScript files" (space before #)
@@ -266,7 +286,9 @@ mod tests {
     fn make_owner_team() {
         let span = Span::new(0, 1, 1, 12);
         let owner = make_owner("@github/core", span);
-        assert!(matches!(owner, Owner::Team { org, team, .. } if org == "github" && team == "core"));
+        assert!(
+            matches!(owner, Owner::Team { org, team, .. } if org == "github" && team == "core")
+        );
     }
 
     #[test]

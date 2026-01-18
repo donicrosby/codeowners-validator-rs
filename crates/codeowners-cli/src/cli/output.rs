@@ -229,10 +229,7 @@ impl ValidationResults {
 
     /// Returns the total number of errors.
     pub fn total_errors(&self) -> usize {
-        self.results
-            .values()
-            .map(|r| r.errors_only().count())
-            .sum()
+        self.results.values().map(|r| r.errors_only().count()).sum()
     }
 
     /// Returns the total number of warnings.
@@ -361,7 +358,11 @@ mod tests {
         let mut results = ValidationResults::new();
 
         let mut r1 = ValidationResult::new();
-        r1.add_error(ValidationError::invalid_owner_format("bad", "reason", test_span()));
+        r1.add_error(ValidationError::invalid_owner_format(
+            "bad",
+            "reason",
+            test_span(),
+        ));
         results.add("syntax", r1);
 
         let mut r2 = ValidationResult::new();

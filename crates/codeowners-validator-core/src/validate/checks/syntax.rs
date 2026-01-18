@@ -3,8 +3,8 @@
 //! This check validates owner formats and pattern syntax.
 
 use super::{Check, CheckContext};
-use crate::validate::syntax::validate_syntax as validate_syntax_impl;
 use crate::validate::ValidationResult;
+use crate::validate::syntax::validate_syntax as validate_syntax_impl;
 
 /// A check that validates CODEOWNERS syntax.
 ///
@@ -35,8 +35,8 @@ impl Check for SyntaxCheck {
 mod tests {
     use super::*;
     use crate::parse::parse_codeowners;
-    use std::path::PathBuf;
     use crate::validate::checks::CheckConfig;
+    use std::path::PathBuf;
 
     fn run_check(input: &str) -> ValidationResult {
         let file = parse_codeowners(input).ast;

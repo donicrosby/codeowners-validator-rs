@@ -3,9 +3,9 @@
 //! This module implements validation rules for owner formats
 //! and pattern syntax.
 
-use crate::parse::{CodeownersFile, LineKind, Owner, Pattern};
-use crate::parse::span::Span;
 use super::error::{ValidationError, ValidationResult};
+use crate::parse::span::Span;
+use crate::parse::{CodeownersFile, LineKind, Owner, Pattern};
 
 /// Validates owner syntax according to GitHub CODEOWNERS rules.
 ///
@@ -111,7 +111,10 @@ fn validate_github_name(name: &str, kind: &str) -> Option<String> {
         return Some(format!("{} name cannot start or end with a hyphen", kind));
     }
 
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Some(format!(
             "{} name can only contain alphanumeric characters, hyphens, and underscores",
             kind
@@ -125,7 +128,7 @@ fn validate_github_name(name: &str, kind: &str) -> Option<String> {
 fn validate_email(email: &str, span: &Span) -> Option<ValidationError> {
     // Basic email validation - must have exactly one @ with content on both sides
     let parts: Vec<&str> = email.split('@').collect();
-    
+
     if parts.len() != 2 {
         return Some(ValidationError::invalid_owner_format(
             email,
@@ -483,7 +486,7 @@ mod tests {
     #[test]
     fn validate_file_all_valid() {
         use crate::parse::parse_codeowners;
-        
+
         let input = r#"
 # Comment
 *.rs @rust-dev
@@ -491,18 +494,18 @@ mod tests {
 "#;
         let result = parse_codeowners(input);
         let validation = validate_syntax(&result.ast);
-        
+
         assert!(validation.is_ok());
     }
 
     #[test]
     fn validate_file_with_invalid_owner() {
         use crate::parse::parse_codeowners;
-        
+
         let input = "*.rs @-invalid-user\n";
         let result = parse_codeowners(input);
         let validation = validate_syntax(&result.ast);
-        
+
         assert!(validation.has_errors());
         assert_eq!(validation.errors.len(), 1);
     }
@@ -510,18 +513,18 @@ mod tests {
     #[test]
     fn validate_file_with_invalid_pattern() {
         use crate::parse::parse_codeowners;
-        
+
         let input = "!*.log @dev\n";
         let result = parse_codeowners(input);
         let validation = validate_syntax(&result.ast);
-        
+
         assert!(validation.has_errors());
     }
 
     #[test]
     fn validate_file_multiple_errors() {
         use crate::parse::parse_codeowners;
-        
+
         let input = r#"
 !*.log @dev
 *.rs @-bad-name
@@ -529,7 +532,7 @@ mod tests {
 "#;
         let result = parse_codeowners(input);
         let validation = validate_syntax(&result.ast);
-        
+
         // Should have multiple errors
         assert!(validation.errors.len() >= 2);
     }

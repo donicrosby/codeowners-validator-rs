@@ -9,7 +9,7 @@
 //! - `/` at the end matches only directories
 //! - Patterns without a leading `/` match anywhere in the path
 
-use globset::{GlobBuilder, GlobMatcher, GlobSetBuilder, GlobSet};
+use globset::{GlobBuilder, GlobMatcher, GlobSet, GlobSetBuilder};
 
 /// A compiled CODEOWNERS pattern that can match file paths.
 #[derive(Debug, Clone)]
@@ -31,14 +31,14 @@ impl Pattern {
     pub fn new(pattern: &str) -> Option<Self> {
         let original = pattern.to_string();
         let (glob_pattern, anchored, directory_only) = normalize_pattern(pattern);
-        
+
         // Use literal_separator to ensure * doesn't match /
         let glob = GlobBuilder::new(&glob_pattern)
             .literal_separator(true)
             .build()
             .ok()?;
         let matcher = glob.compile_matcher();
-        
+
         Some(Self {
             original,
             matcher,
@@ -104,7 +104,7 @@ impl PatternSet {
     pub fn new(patterns: &[&str]) -> Option<Self> {
         let mut builder = GlobSetBuilder::new();
         let mut compiled_patterns = Vec::new();
-        
+
         for pattern_str in patterns {
             let pattern = Pattern::new(pattern_str)?;
             let (glob_pattern, _, _) = normalize_pattern(pattern_str);
@@ -115,9 +115,9 @@ impl PatternSet {
             builder.add(glob);
             compiled_patterns.push(pattern);
         }
-        
+
         let glob_set = builder.build().ok()?;
-        
+
         Some(Self {
             glob_set,
             patterns: compiled_patterns,
@@ -162,13 +162,13 @@ fn normalize_pattern(pattern: &str) -> (String, bool, bool) {
     let mut pattern = pattern.to_string();
     let mut anchored = false;
     let mut directory_only = false;
-    
+
     // Check for directory-only suffix
     if pattern.ends_with('/') {
         directory_only = true;
         pattern = pattern.trim_end_matches('/').to_string();
     }
-    
+
     // Check for anchored pattern (starts with /)
     if pattern.starts_with('/') {
         anchored = true;
@@ -180,13 +180,13 @@ fn normalize_pattern(pattern: &str) -> (String, bool, bool) {
         pattern = format!("**/{}", pattern);
     }
     // Patterns with / but not starting with / are relative to root already
-    
+
     // For directory patterns, we need to match everything inside
     // e.g., /docs/ should become docs/** to match docs/anything
     if directory_only {
         pattern = format!("{}/**", pattern);
     }
-    
+
     (pattern, anchored, directory_only)
 }
 
@@ -201,16 +201,16 @@ fn normalize_pattern(pattern: &str) -> (String, bool, bool) {
 /// - File extension patterns: +3
 fn calculate_specificity(pattern: &str) -> u32 {
     let mut score = 0u32;
-    
+
     // Anchored patterns are more specific
     if pattern.starts_with('/') {
         score += 5;
     }
-    
+
     // Count path segments
     let clean_pattern = pattern.trim_matches('/');
     let segments: Vec<&str> = clean_pattern.split('/').collect();
-    
+
     for segment in segments {
         if segment == "**" {
             // Double wildcard matches anything - low specificity
@@ -226,12 +226,12 @@ fn calculate_specificity(pattern: &str) -> u32 {
             score += 10;
         }
     }
-    
+
     // Patterns with file extensions are more specific
     if pattern.contains('.') && !pattern.ends_with('/') {
         score += 3;
     }
-    
+
     score
 }
 
@@ -312,7 +312,7 @@ mod tests {
         let p2 = Pattern::new("*.rs").unwrap();
         let p3 = Pattern::new("/src/").unwrap();
         let p4 = Pattern::new("/src/main.rs").unwrap();
-        
+
         assert!(p1.specificity() < p2.specificity());
         assert!(p2.specificity() < p3.specificity());
         assert!(p3.specificity() < p4.specificity());
@@ -331,12 +331,12 @@ mod tests {
     #[test]
     fn pattern_set_last_match() {
         let set = PatternSet::new(&["*", "*.rs", "/src/*.rs"]).unwrap();
-        
+
         // For src/main.rs, the last matching pattern should be /src/*.rs
         let last = set.last_match("src/main.rs");
         assert!(last.is_some());
         assert_eq!(last.unwrap().as_str(), "/src/*.rs");
-        
+
         // For README.md, only * matches
         let last = set.last_match("README.md");
         assert!(last.is_some());
@@ -360,12 +360,12 @@ mod tests {
         assert!(anchored);
         assert!(dir);
         assert_eq!(p, "src/**");
-        
+
         let (p, anchored, dir) = normalize_pattern("*.rs");
         assert!(!anchored);
         assert!(!dir);
         assert_eq!(p, "**/*.rs");
-        
+
         let (p, anchored, dir) = normalize_pattern("src/lib/");
         assert!(!anchored);
         assert!(dir);

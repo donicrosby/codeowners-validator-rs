@@ -122,7 +122,10 @@ impl OwnersCheck {
                 trace!("Skipping email owner validation: {}", owner.as_str());
                 // Check if owners must be teams
                 if ctx.config.owners_must_be_teams {
-                    debug!("Email {} rejected: owners_must_be_teams is enabled", owner.as_str());
+                    debug!(
+                        "Email {} rejected: owners_must_be_teams is enabled",
+                        owner.as_str()
+                    );
                     return Some(ValidationError::owner_must_be_team(
                         owner.as_str(),
                         *owner.span(),
@@ -166,8 +169,11 @@ impl AsyncCheck for OwnersCheck {
             }
         }
 
-        debug!("Owners check complete: {} unique owners checked, {} errors found", 
-               checked_owners.len(), result.errors.len());
+        debug!(
+            "Owners check complete: {} unique owners checked, {} errors found",
+            checked_owners.len(),
+            result.errors.len()
+        );
         result
     }
 }

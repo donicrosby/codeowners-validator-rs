@@ -5,15 +5,15 @@
 use clap::Parser;
 use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode as StdExitCode;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::signal;
-use tracing::{debug, error, info, warn, Level};
+use tracing::{Level, debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod cli;
 
-use cli::config::{create_octocrab, ExitCode, ValidatedConfig};
+use cli::config::{ExitCode, ValidatedConfig, create_octocrab};
 use cli::github::OctocrabClient;
 use cli::output::{HumanOutput, ValidationResults};
 use cli::{Args, CheckKind, ExperimentalCheckKind};

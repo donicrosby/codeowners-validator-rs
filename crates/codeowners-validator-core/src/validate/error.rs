@@ -118,7 +118,9 @@ pub enum ValidationError {
     },
 
     /// A pattern is shadowed by an earlier, less specific pattern.
-    #[error("line {line}: pattern '{pattern}' is shadowed by pattern '{shadowing_pattern}' on line {shadowing_line}")]
+    #[error(
+        "line {line}: pattern '{pattern}' is shadowed by pattern '{shadowing_pattern}' on line {shadowing_line}"
+    )]
     PatternShadowed {
         /// The line number of the shadowed pattern (1-based).
         line: usize,
@@ -188,11 +190,7 @@ impl ValidationError {
     }
 
     /// Creates a duplicate pattern error.
-    pub fn duplicate_pattern(
-        pattern: impl Into<String>,
-        span: Span,
-        first_line: usize,
-    ) -> Self {
+    pub fn duplicate_pattern(pattern: impl Into<String>, span: Span, first_line: usize) -> Self {
         Self::DuplicatePattern {
             line: span.line,
             pattern: pattern.into(),
@@ -380,8 +378,12 @@ mod tests {
 
     #[test]
     fn validation_error_invalid_owner_format() {
-        let error = ValidationError::invalid_owner_format("badowner", "must start with @", test_span());
-        assert!(matches!(error, ValidationError::InvalidOwnerFormat { line: 2, .. }));
+        let error =
+            ValidationError::invalid_owner_format("badowner", "must start with @", test_span());
+        assert!(matches!(
+            error,
+            ValidationError::InvalidOwnerFormat { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Error);
         assert!(error.to_string().contains("badowner"));
         assert!(error.to_string().contains("must start with @"));
@@ -389,22 +391,43 @@ mod tests {
 
     #[test]
     fn validation_error_invalid_pattern_syntax() {
-        let error = ValidationError::invalid_pattern_syntax("[abc]", "character classes not supported", test_span());
-        assert!(matches!(error, ValidationError::InvalidPatternSyntax { line: 2, .. }));
+        let error = ValidationError::invalid_pattern_syntax(
+            "[abc]",
+            "character classes not supported",
+            test_span(),
+        );
+        assert!(matches!(
+            error,
+            ValidationError::InvalidPatternSyntax { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Error);
     }
 
     #[test]
     fn validation_error_unsupported_pattern_syntax() {
-        let error = ValidationError::unsupported_pattern_syntax("!ignore", "negation not supported", test_span());
-        assert!(matches!(error, ValidationError::UnsupportedPatternSyntax { line: 2, .. }));
+        let error = ValidationError::unsupported_pattern_syntax(
+            "!ignore",
+            "negation not supported",
+            test_span(),
+        );
+        assert!(matches!(
+            error,
+            ValidationError::UnsupportedPatternSyntax { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Warning);
     }
 
     #[test]
     fn validation_error_duplicate_pattern() {
         let error = ValidationError::duplicate_pattern("*.rs", test_span(), 1);
-        assert!(matches!(error, ValidationError::DuplicatePattern { line: 2, first_line: 1, .. }));
+        assert!(matches!(
+            error,
+            ValidationError::DuplicatePattern {
+                line: 2,
+                first_line: 1,
+                ..
+            }
+        ));
         assert_eq!(error.severity(), Severity::Warning);
         assert!(error.to_string().contains("duplicate"));
         assert!(error.to_string().contains("*.rs"));
@@ -413,21 +436,34 @@ mod tests {
     #[test]
     fn validation_error_pattern_not_matching() {
         let error = ValidationError::pattern_not_matching("/nonexistent/", test_span());
-        assert!(matches!(error, ValidationError::PatternNotMatching { line: 2, .. }));
+        assert!(matches!(
+            error,
+            ValidationError::PatternNotMatching { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Warning);
     }
 
     #[test]
     fn validation_error_owner_not_found() {
         let error = ValidationError::owner_not_found("@ghost", "user does not exist", test_span());
-        assert!(matches!(error, ValidationError::OwnerNotFound { line: 2, .. }));
+        assert!(matches!(
+            error,
+            ValidationError::OwnerNotFound { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Error);
     }
 
     #[test]
     fn validation_error_insufficient_authorization() {
-        let error = ValidationError::insufficient_authorization("@org/team", "requires read:org scope", test_span());
-        assert!(matches!(error, ValidationError::InsufficientAuthorization { line: 2, .. }));
+        let error = ValidationError::insufficient_authorization(
+            "@org/team",
+            "requires read:org scope",
+            test_span(),
+        );
+        assert!(matches!(
+            error,
+            ValidationError::InsufficientAuthorization { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Error);
     }
 
@@ -443,14 +479,24 @@ mod tests {
     #[test]
     fn validation_error_pattern_shadowed() {
         let error = ValidationError::pattern_shadowed("src/*.rs", test_span(), "*", 1);
-        assert!(matches!(error, ValidationError::PatternShadowed { line: 2, shadowing_line: 1, .. }));
+        assert!(matches!(
+            error,
+            ValidationError::PatternShadowed {
+                line: 2,
+                shadowing_line: 1,
+                ..
+            }
+        ));
         assert_eq!(error.severity(), Severity::Warning);
     }
 
     #[test]
     fn validation_error_owner_must_be_team() {
         let error = ValidationError::owner_must_be_team("@user", test_span());
-        assert!(matches!(error, ValidationError::OwnerMustBeTeam { line: 2, .. }));
+        assert!(matches!(
+            error,
+            ValidationError::OwnerMustBeTeam { line: 2, .. }
+        ));
         assert_eq!(error.severity(), Severity::Error);
     }
 
@@ -468,9 +514,11 @@ mod tests {
 
     #[test]
     fn validation_result_with_errors() {
-        let errors = vec![
-            ValidationError::invalid_owner_format("bad", "reason", test_span()),
-        ];
+        let errors = vec![ValidationError::invalid_owner_format(
+            "bad",
+            "reason",
+            test_span(),
+        )];
         let result = ValidationResult::with_errors(errors);
         assert!(!result.is_ok());
         assert!(result.has_errors());
@@ -483,10 +531,10 @@ mod tests {
             ValidationError::unsupported_pattern_syntax("!x", "negation", test_span()),
         ];
         let result = ValidationResult::with_errors(errors);
-        
+
         let errors_only: Vec<_> = result.errors_only().collect();
         let warnings_only: Vec<_> = result.warnings_only().collect();
-        
+
         assert_eq!(errors_only.len(), 1);
         assert_eq!(warnings_only.len(), 1);
     }
@@ -495,10 +543,10 @@ mod tests {
     fn validation_result_add_and_merge() {
         let mut result1 = ValidationResult::new();
         result1.add_error(ValidationError::invalid_owner_format("a", "r", test_span()));
-        
+
         let mut result2 = ValidationResult::new();
         result2.add_error(ValidationError::invalid_owner_format("b", "r", test_span()));
-        
+
         result1.merge(result2);
         assert_eq!(result1.errors.len(), 2);
     }

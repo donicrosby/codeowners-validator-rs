@@ -111,7 +111,7 @@ impl<'a> SpanTracker<'a> {
     /// Updates line and column based on the content being skipped.
     pub fn advance(&mut self, bytes: usize) -> &'a str {
         let consumed = &self.input[..bytes];
-        
+
         // Update line and column based on consumed content
         for ch in consumed.chars() {
             if ch == '\n' {
@@ -121,7 +121,7 @@ impl<'a> SpanTracker<'a> {
                 self.column += 1;
             }
         }
-        
+
         self.offset += bytes;
         self.input = &self.input[bytes..];
         consumed
@@ -195,7 +195,7 @@ mod tests {
         let span1 = Span::new(0, 1, 1, 5);
         let span2 = Span::new(10, 1, 11, 3);
         let extended = span1.extend(&span2);
-        
+
         assert_eq!(extended.offset, 0);
         assert_eq!(extended.line, 1);
         assert_eq!(extended.column, 1);
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn tracker_advance_updates_position() {
         let mut tracker = SpanTracker::new("hello\nworld");
-        
+
         // Advance past "hello"
         tracker.advance(5);
         assert_eq!(tracker.line(), 1);
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn tracker_advance_handles_newlines() {
         let mut tracker = SpanTracker::new("hello\nworld");
-        
+
         // Advance past "hello\n"
         tracker.advance(6);
         assert_eq!(tracker.line(), 2);
@@ -239,7 +239,7 @@ mod tests {
     fn tracker_consume_returns_span() {
         let mut tracker = SpanTracker::new("*.rs @owner");
         let span = tracker.consume("*.rs");
-        
+
         assert_eq!(span.offset, 0);
         assert_eq!(span.line, 1);
         assert_eq!(span.column, 1);
@@ -250,15 +250,15 @@ mod tests {
     #[test]
     fn tracker_multiple_lines() {
         let mut tracker = SpanTracker::new("line1\nline2\nline3");
-        
+
         tracker.advance(6); // "line1\n"
         assert_eq!(tracker.line(), 2);
         assert_eq!(tracker.column(), 1);
-        
+
         tracker.advance(6); // "line2\n"
         assert_eq!(tracker.line(), 3);
         assert_eq!(tracker.column(), 1);
-        
+
         tracker.advance(5); // "line3"
         assert_eq!(tracker.line(), 3);
         assert_eq!(tracker.column(), 6);
@@ -268,7 +268,7 @@ mod tests {
     fn tracker_span_of_creates_correct_span() {
         let mut tracker = SpanTracker::new("hello\nworld");
         tracker.advance(6); // Move to line 2
-        
+
         let span = tracker.span_of(5);
         assert_eq!(span.offset, 6);
         assert_eq!(span.line, 2);
@@ -280,7 +280,7 @@ mod tests {
     fn tracker_peek_char() {
         let tracker = SpanTracker::new("hello");
         assert_eq!(tracker.peek_char(), Some('h'));
-        
+
         let empty_tracker = SpanTracker::new("");
         assert_eq!(empty_tracker.peek_char(), None);
     }
@@ -289,7 +289,7 @@ mod tests {
     fn tracker_is_empty() {
         let mut tracker = SpanTracker::new("hi");
         assert!(!tracker.is_empty());
-        
+
         tracker.advance(2);
         assert!(tracker.is_empty());
     }
