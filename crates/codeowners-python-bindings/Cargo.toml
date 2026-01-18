@@ -1,0 +1,25 @@
+[package]
+name = "codeowners-python-bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for the CODEOWNERS validator"
+
+[lib]
+name = "codeowners_validator"
+crate-type = ["cdylib"]
+
+[dependencies]
+codeowners-validator-core.workspace = true
+pyo3.workspace = true
+pyo3-async-runtimes.workspace = true
+pyo3-log.workspace = true
+log.workspace = true
+pythonize.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

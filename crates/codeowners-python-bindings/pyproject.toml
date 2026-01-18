@@ -1,0 +1,74 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "codeowners-validator"
+version = "0.1.0"
+description = "A fast CODEOWNERS file validator with Python bindings"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Typing :: Typed",
+]
+keywords = ["codeowners", "github", "validation", "linter"]
+
+[project.optional-dependencies]
+githubkit = ["githubkit>=0.11"]
+pygithub = ["PyGithub>=2.0"]
+
+[project.urls]
+Homepage = "https://github.com/donicrosby/codeowners-validator-rs"
+Repository = "https://github.com/donicrosby/codeowners-validator-rs"
+Issues = "https://github.com/donicrosby/codeowners-validator-rs/issues"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.5,<2.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pre-commit>=4.3.0",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "codeowners_validator._codeowners_validator"
+strip = true
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

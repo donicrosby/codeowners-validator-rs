@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_BINDINGS_DIR: crates/codeowners-python-bindings
+
+jobs:
+  # ============================================================================
+  # Rust Jobs - All run in parallel
+  # ============================================================================
+
+  rust-fmt:
+    name: Rust Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: true
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  rust-clippy:
+    name: Rust Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          cache: true
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  rust-test:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Run tests
+        run: cargo test --all
+
+  # ============================================================================
+  # Python Jobs - All run in parallel
+  # ============================================================================
+
+  python-lint:
+    name: Python Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Ruff check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check
+          src: ${{ env.PYTHON_BINDINGS_DIR }}
+
+      - name: Ruff format check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format --check --diff
+          src: ${{ env.PYTHON_BINDINGS_DIR }}
+
+  python-test:
+    name: Python Tests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: ${{ env.PYTHON_BINDINGS_DIR }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: ${{ env.PYTHON_BINDINGS_DIR }}/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build native extension
+        run: uv run maturin develop --uv
+
+      - name: Run tests
+        run: uv run pytest

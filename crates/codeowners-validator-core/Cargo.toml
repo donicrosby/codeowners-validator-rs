@@ -1,0 +1,23 @@
+[package]
+name = "codeowners-validator-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A library for parsing and validating GitHub CODEOWNERS files"
+readme = "../../README.md"
+
+[dependencies]
+nom.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true
+globset.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock.workspace = true
+tokio-test.workspace = true
