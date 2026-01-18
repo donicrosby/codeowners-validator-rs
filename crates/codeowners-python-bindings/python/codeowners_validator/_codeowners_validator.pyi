@@ -148,9 +148,7 @@ class GithubClientProtocol(Protocol):
         ```
     """
 
-    def user_exists(
-        self, username: str
-    ) -> bool | Awaitable[bool]:
+    def user_exists(self, username: str) -> bool | Awaitable[bool]:
         """Check if a GitHub user exists.
 
         Args:
@@ -164,10 +162,7 @@ class GithubClientProtocol(Protocol):
 
     def team_exists(
         self, org: str, team: str
-    ) -> (
-        Literal["exists", "not_found", "unauthorized"]
-        | Awaitable[Literal["exists", "not_found", "unauthorized"]]
-    ):
+    ) -> Literal["exists", "not_found", "unauthorized"] | Awaitable[Literal["exists", "not_found", "unauthorized"]]:
         """Check if a GitHub team exists in an organization.
 
         Args:

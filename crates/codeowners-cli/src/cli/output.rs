@@ -62,8 +62,7 @@ impl JsonOutput {
 
     /// Writes the JSON output to a writer.
     pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         writeln!(writer, "{}", json)
     }
 }

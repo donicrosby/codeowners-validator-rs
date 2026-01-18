@@ -217,29 +217,34 @@ impl PyCheckConfig {
         let mut config = Self::default();
 
         if let Ok(Some(val)) = dict.get_item("ignored_owners")
-            && let Ok(list) = val.extract::<Vec<String>>() {
-                config.ignored_owners = list.into_iter().collect();
-            }
+            && let Ok(list) = val.extract::<Vec<String>>()
+        {
+            config.ignored_owners = list.into_iter().collect();
+        }
 
         if let Ok(Some(val)) = dict.get_item("owners_must_be_teams")
-            && let Ok(b) = val.extract::<bool>() {
-                config.owners_must_be_teams = b;
-            }
+            && let Ok(b) = val.extract::<bool>()
+        {
+            config.owners_must_be_teams = b;
+        }
 
         if let Ok(Some(val)) = dict.get_item("allow_unowned_patterns")
-            && let Ok(b) = val.extract::<bool>() {
-                config.allow_unowned_patterns = b;
-            }
+            && let Ok(b) = val.extract::<bool>()
+        {
+            config.allow_unowned_patterns = b;
+        }
 
         if let Ok(Some(val)) = dict.get_item("skip_patterns")
-            && let Ok(list) = val.extract::<Vec<String>>() {
-                config.skip_patterns = list;
-            }
+            && let Ok(list) = val.extract::<Vec<String>>()
+        {
+            config.skip_patterns = list;
+        }
 
         if let Ok(Some(val)) = dict.get_item("repository")
-            && let Ok(s) = val.extract::<String>() {
-                config.repository = Some(s);
-            }
+            && let Ok(s) = val.extract::<String>()
+        {
+            config.repository = Some(s);
+        }
 
         Ok(config)
     }

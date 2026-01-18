@@ -30,9 +30,7 @@ class MockGithubClient:
         self.user_calls.append(username)
         return username in self.existing_users
 
-    def team_exists(
-        self, org: str, team: str
-    ) -> Literal["exists", "not_found", "unauthorized"]:
+    def team_exists(self, org: str, team: str) -> Literal["exists", "not_found", "unauthorized"]:
         self.team_calls.append((org, team))
         if (org, team) in self.unauthorized_teams:
             return "unauthorized"
@@ -55,9 +53,7 @@ class AsyncMockGithubClient:
     async def user_exists(self, username: str) -> bool:
         return username in self.existing_users
 
-    async def team_exists(
-        self, org: str, team: str
-    ) -> Literal["exists", "not_found", "unauthorized"]:
+    async def team_exists(self, org: str, team: str) -> Literal["exists", "not_found", "unauthorized"]:
         if (org, team) in self.existing_teams:
             return "exists"
         return "not_found"
@@ -199,9 +195,7 @@ class TestValidateCodeowners:
 
         # Should detect duplicate pattern
         assert len(result["duppatterns"]) > 0
-        assert any(
-            "duplicate" in issue["message"].lower() for issue in result["duppatterns"]
-        )
+        assert any("duplicate" in issue["message"].lower() for issue in result["duppatterns"])
 
     def test_validate_with_config(self, temp_repo: str) -> None:
         """Test validation with custom configuration."""
@@ -298,9 +292,7 @@ class TestValidateWithGithub:
         assert "owners" in result
         assert len(result["owners"]) > 0
         # Should be an authorization error, not a not-found error
-        assert any(
-            "authorization" in issue["message"].lower() for issue in result["owners"]
-        )
+        assert any("authorization" in issue["message"].lower() for issue in result["owners"])
 
     @pytest.mark.asyncio
     async def test_validate_with_async_client(self, temp_repo: str) -> None:
@@ -358,11 +350,7 @@ class TestIssueFormat:
         result = validate_codeowners(content, temp_repo)
 
         # Check any issues have the expected format
-        all_issues = (
-            result.get("syntax", [])
-            + result.get("files", [])
-            + result.get("duppatterns", [])
-        )
+        all_issues = result.get("syntax", []) + result.get("files", []) + result.get("duppatterns", [])
 
         for issue in all_issues:
             # All issues should have these fields
