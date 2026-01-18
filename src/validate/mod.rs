@@ -24,6 +24,7 @@
 //! }
 //! ```
 
+pub mod checks;
 mod error;
 mod syntax;
 

@@ -51,10 +51,13 @@
 //!
 //! - [`parse`]: Parser for CODEOWNERS files
 //! - [`validate`]: Validation rules for parsed files
+//! - [`matching`]: Pattern matching for CODEOWNERS files
 
+pub mod matching;
 pub mod parse;
 pub mod validate;
 
 // Re-export commonly used types at the crate root
 pub use parse::{parse_codeowners, CodeownersFile, ParseResult};
 pub use validate::{validate_syntax, ValidationResult};
+pub use validate::checks::{CheckConfig, CheckContext, AsyncCheckContext, Check, AsyncCheck, CheckRunner};
