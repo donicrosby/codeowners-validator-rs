@@ -168,12 +168,13 @@ class TestParseCodeowners:
 class TestValidateCodeowners:
     """Tests for validate_codeowners function."""
 
-    def test_validate_valid_file(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_validate_valid_file(self, temp_repo: str) -> None:
         """Test validating a valid CODEOWNERS file."""
         from codeowners_validator import validate_codeowners
 
         content = "*.rs @rustacean\n"
-        result = validate_codeowners(content, temp_repo)
+        result = await validate_codeowners(content, temp_repo)
 
         # Check that we got results for each check
         assert "syntax" in result
@@ -184,20 +185,22 @@ class TestValidateCodeowners:
         # Should have no syntax errors
         assert len(result["syntax"]) == 0
 
-    def test_validate_duplicate_patterns(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_validate_duplicate_patterns(self, temp_repo: str) -> None:
         """Test detecting duplicate patterns."""
         from codeowners_validator import validate_codeowners
 
         content = """*.rs @user1
 *.rs @user2
 """
-        result = validate_codeowners(content, temp_repo)
+        result = await validate_codeowners(content, temp_repo)
 
         # Should detect duplicate pattern
         assert len(result["duppatterns"]) > 0
         assert any("duplicate" in issue["message"].lower() for issue in result["duppatterns"])
 
-    def test_validate_with_config(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_validate_with_config(self, temp_repo: str) -> None:
         """Test validation with custom configuration."""
         from codeowners_validator import validate_codeowners
 
@@ -205,29 +208,31 @@ class TestValidateCodeowners:
         config: CheckConfigDict = {
             "ignored_owners": ["@ignored-user"],
         }
-        result = validate_codeowners(content, temp_repo, config=config)
+        result = await validate_codeowners(content, temp_repo, config=config)
 
         # Should have no errors (owner is ignored)
         assert len(result["syntax"]) == 0
 
-    def test_validate_specific_checks(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_validate_specific_checks(self, temp_repo: str) -> None:
         """Test running only specific checks."""
         from codeowners_validator import validate_codeowners
 
         content = "*.rs @rustacean\n"
-        result = validate_codeowners(content, temp_repo, checks=["syntax"])
+        result = await validate_codeowners(content, temp_repo, checks=["syntax"])
 
         # Should have run syntax check
         assert "syntax" in result
         assert len(result["syntax"]) == 0
 
-    def test_validate_notowned_check(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_validate_notowned_check(self, temp_repo: str) -> None:
         """Test the not-owned experimental check."""
         from codeowners_validator import validate_codeowners
 
         # Only cover .rs files, leaving other files unowned
         content = "*.rs @rustacean\n"
-        result = validate_codeowners(content, temp_repo, checks=["notowned"])
+        result = await validate_codeowners(content, temp_repo, checks=["notowned"])
 
         # Should detect files not covered by any rule
         # Note: The actual result depends on what files exist in temp_repo
@@ -235,17 +240,17 @@ class TestValidateCodeowners:
 
 
 class TestValidateWithGithub:
-    """Tests for validate_with_github function."""
+    """Tests for validate_codeowners with github_client."""
 
     @pytest.mark.asyncio
     async def test_validate_user_exists(self, temp_repo: str) -> None:
         """Test validation with a user that exists."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @validuser\n"
         client = MockGithubClient(existing_users={"validuser"})
 
-        result = await validate_with_github(content, temp_repo, client)
+        result = await validate_codeowners(content, temp_repo, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) == 0  # No errors
@@ -254,12 +259,12 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_user_not_found(self, temp_repo: str) -> None:
         """Test validation with a user that doesn't exist."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @ghostuser\n"
         client = MockGithubClient()  # No users
 
-        result = await validate_with_github(content, temp_repo, client)
+        result = await validate_codeowners(content, temp_repo, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) > 0
@@ -268,12 +273,12 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_team_exists(self, temp_repo: str) -> None:
         """Test validation with a team that exists."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @myorg/myteam\n"
         client = MockGithubClient(existing_teams={("myorg", "myteam")})
 
-        result = await validate_with_github(content, temp_repo, client)
+        result = await validate_codeowners(content, temp_repo, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) == 0  # No errors
@@ -282,12 +287,12 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_team_unauthorized(self, temp_repo: str) -> None:
         """Test validation with a team that returns unauthorized."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @privateorg/privateteam\n"
         client = MockGithubClient(unauthorized_teams={("privateorg", "privateteam")})
 
-        result = await validate_with_github(content, temp_repo, client)
+        result = await validate_codeowners(content, temp_repo, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) > 0
@@ -297,12 +302,12 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_with_async_client(self, temp_repo: str) -> None:
         """Test validation with an async GitHub client."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @asyncuser\n"
         client = AsyncMockGithubClient(existing_users={"asyncuser"})
 
-        result = await validate_with_github(content, temp_repo, client)
+        result = await validate_codeowners(content, temp_repo, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) == 0
@@ -310,13 +315,13 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_with_owners_must_be_teams(self, temp_repo: str) -> None:
         """Test validation requiring team owners."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @individual-user\n"
         client = MockGithubClient(existing_users={"individual-user"})
         config: CheckConfigDict = {"owners_must_be_teams": True}
 
-        result = await validate_with_github(content, temp_repo, client, config=config)
+        result = await validate_codeowners(content, temp_repo, config=config, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) > 0
@@ -326,13 +331,13 @@ class TestValidateWithGithub:
     @pytest.mark.asyncio
     async def test_validate_with_ignored_owners(self, temp_repo: str) -> None:
         """Test validation with ignored owners."""
-        from codeowners_validator import validate_with_github
+        from codeowners_validator import validate_codeowners
 
         content = "*.rs @ignored-owner\n"
         client = MockGithubClient()  # User doesn't exist
         config: CheckConfigDict = {"ignored_owners": ["@ignored-owner"]}
 
-        result = await validate_with_github(content, temp_repo, client, config=config)
+        result = await validate_codeowners(content, temp_repo, config=config, github_client=client)
 
         assert "owners" in result
         assert len(result["owners"]) == 0  # Should be ignored
@@ -341,13 +346,14 @@ class TestValidateWithGithub:
 class TestIssueFormat:
     """Tests for the format of validation issues."""
 
-    def test_issue_has_required_fields(self, temp_repo: str) -> None:
+    @pytest.mark.asyncio
+    async def test_issue_has_required_fields(self, temp_repo: str) -> None:
         """Test that issues have all required fields."""
         from codeowners_validator import validate_codeowners
 
         # Create a file with a syntax issue
         content = "*.rs @invalid--owner\n"  # Double hyphen might be invalid
-        result = validate_codeowners(content, temp_repo)
+        result = await validate_codeowners(content, temp_repo)
 
         # Check any issues have the expected format
         all_issues = result.get("syntax", []) + result.get("files", []) + result.get("duppatterns", [])

@@ -26,6 +26,7 @@
 
 pub mod checks;
 mod error;
+pub mod file_walker;
 pub mod github_client;
 mod syntax;
 

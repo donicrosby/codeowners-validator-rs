@@ -9,10 +9,11 @@ readme = "../../README.md"
 [dependencies]
 nom.workspace = true
 thiserror.workspace = true
-walkdir.workspace = true
+ignore.workspace = true
 globset.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -103,17 +103,27 @@ impl PatternSet {
     /// Creates a new pattern set from a list of pattern strings.
     pub fn new(patterns: &[&str]) -> Option<Self> {
         let mut builder = GlobSetBuilder::new();
-        let mut compiled_patterns = Vec::new();
+        let mut compiled_patterns = Vec::with_capacity(patterns.len());
 
         for pattern_str in patterns {
-            let pattern = Pattern::new(pattern_str)?;
-            let (glob_pattern, _, _) = normalize_pattern(pattern_str);
+            // Normalize once, reuse for both GlobSet and Pattern
+            let (glob_pattern, anchored, directory_only) = normalize_pattern(pattern_str);
+
             let glob = GlobBuilder::new(&glob_pattern)
                 .literal_separator(true)
                 .build()
                 .ok()?;
-            builder.add(glob);
-            compiled_patterns.push(pattern);
+
+            // Clone for the GlobSet, use original for the Pattern's matcher
+            builder.add(glob.clone());
+            let matcher = glob.compile_matcher();
+
+            compiled_patterns.push(Pattern {
+                original: pattern_str.to_string(),
+                matcher,
+                anchored,
+                directory_only,
+            });
         }
 
         let glob_set = builder.build().ok()?;
@@ -159,35 +169,36 @@ impl PatternSet {
 ///
 /// Returns (glob_pattern, is_anchored, is_directory_only).
 fn normalize_pattern(pattern: &str) -> (String, bool, bool) {
-    let mut pattern = pattern.to_string();
-    let mut anchored = false;
-    let mut directory_only = false;
+    // Determine flags without allocating
+    let directory_only = pattern.ends_with('/');
+    let anchored = pattern.starts_with('/');
 
-    // Check for directory-only suffix
-    if pattern.ends_with('/') {
-        directory_only = true;
-        pattern = pattern.trim_end_matches('/').to_string();
+    // Determine the core pattern slice (without leading/trailing slashes)
+    let core = pattern
+        .strip_prefix('/')
+        .unwrap_or(pattern)
+        .strip_suffix('/')
+        .unwrap_or(if anchored { &pattern[1..] } else { pattern });
+
+    // Determine if we need **/ prefix (for patterns without any slash that aren't anchored)
+    let needs_prefix = !anchored && !core.contains('/') && !pattern.contains('/');
+
+    // Calculate capacity and build result in one allocation
+    let capacity = if needs_prefix { 3 } else { 0 } // "**/""
+        + core.len()
+        + if directory_only { 3 } else { 0 }; // "/**"
+
+    let mut result = String::with_capacity(capacity);
+
+    if needs_prefix {
+        result.push_str("**/");
     }
-
-    // Check for anchored pattern (starts with /)
-    if pattern.starts_with('/') {
-        anchored = true;
-        pattern = pattern[1..].to_string();
-        // Anchored patterns are already relative to root, don't add **/
-    } else if !pattern.contains('/') {
-        // Pattern without slash matches anywhere in the tree
-        // Convert to **/ prefix for glob matching
-        pattern = format!("**/{}", pattern);
-    }
-    // Patterns with / but not starting with / are relative to root already
-
-    // For directory patterns, we need to match everything inside
-    // e.g., /docs/ should become docs/** to match docs/anything
+    result.push_str(core);
     if directory_only {
-        pattern = format!("{}/**", pattern);
+        result.push_str("/**");
     }
 
-    (pattern, anchored, directory_only)
+    (result, anchored, directory_only)
 }
 
 /// Calculates a specificity score for a pattern.

@@ -23,12 +23,10 @@ from codeowners_validator._codeowners_validator import (
     __version__,
     parse_codeowners,
     validate_codeowners,
-    validate_with_github,
 )
 
 __all__ = [
     "__version__",
     "parse_codeowners",
     "validate_codeowners",
-    "validate_with_github",
 ]

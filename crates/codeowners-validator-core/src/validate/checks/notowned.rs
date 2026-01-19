@@ -6,9 +6,8 @@
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::LineKind;
+use crate::validate::file_walker::{FileWalkerConfig, list_files};
 use crate::validate::{ValidationError, ValidationResult};
-use std::path::Path;
-use walkdir::WalkDir;
 
 /// A check that identifies files without CODEOWNERS coverage.
 ///
@@ -23,68 +22,14 @@ impl NotOwnedCheck {
         Self
     }
 
-    /// Lists all files in the repository, relative to the root.
-    fn list_files(repo_path: &Path) -> Vec<String> {
-        let mut files = Vec::new();
-
-        for entry in WalkDir::new(repo_path)
-            .follow_links(false)
-            .into_iter()
-            .filter_entry(|e| {
-                // Filter out hidden files and directories at the iterator level
-                // This prevents descending into hidden directories
-                // But always allow the root directory itself
-                if e.depth() == 0 {
-                    return true;
-                }
-                e.file_name()
-                    .to_str()
-                    .map(|s| !s.starts_with('.'))
-                    .unwrap_or(false)
-            })
-            .filter_map(|e| e.ok())
-        {
-            // Skip the root directory itself
-            if entry.path() == repo_path {
-                continue;
-            }
-
-            // Only include files, not directories
-            if !entry.file_type().is_file() {
-                continue;
-            }
-
-            // Get path relative to repo root
-            if let Ok(relative) = entry.path().strip_prefix(repo_path)
-                && let Some(path_str) = relative.to_str()
-            {
-                // Normalize to forward slashes
-                let normalized = path_str.replace('\\', "/");
-                files.push(normalized);
-            }
-        }
-
-        files
-    }
-
     /// Checks if a file is covered by any of the patterns.
     fn is_file_covered(file: &str, patterns: &[Pattern]) -> bool {
-        for pattern in patterns {
-            if pattern.matches(file) {
-                return true;
-            }
-        }
-        false
+        patterns.iter().any(|pattern| pattern.matches(file))
     }
 
     /// Checks if a file matches any skip pattern.
     fn should_skip_file(file: &str, skip_patterns: &[Pattern]) -> bool {
-        for pattern in skip_patterns {
-            if pattern.matches(file) {
-                return true;
-            }
-        }
-        false
+        skip_patterns.iter().any(|pattern| pattern.matches(file))
     }
 }
 
@@ -114,8 +59,8 @@ impl Check for NotOwnedCheck {
             .filter_map(|p| Pattern::new(p))
             .collect();
 
-        // List all files in the repository
-        let files = Self::list_files(ctx.repo_path);
+        // List all files (includes hidden, respects gitignore)
+        let files = list_files(ctx.repo_path, &FileWalkerConfig::for_not_owned_check());
 
         // Check each file
         for file in files {
@@ -140,6 +85,7 @@ mod tests {
     use crate::parse::parse_codeowners;
     use crate::validate::checks::CheckConfig;
     use std::fs::{self, File};
+    use std::path::Path;
     use tempfile::TempDir;
 
     fn setup_test_dir() -> TempDir {
@@ -282,15 +228,162 @@ mod tests {
     }
 
     #[test]
-    fn hidden_files_skipped() {
+    fn hidden_directories_like_dotgit_excluded() {
+        // Note: The `ignore` crate automatically excludes .git/ directories
+        // even when hidden files are enabled. This test verifies other
+        // hidden directories ARE included while .git would be excluded.
         let dir = TempDir::new().unwrap();
-        fs::create_dir_all(dir.path().join(".git")).unwrap();
-        File::create(dir.path().join(".git/config")).unwrap();
-        File::create(dir.path().join(".gitignore")).unwrap();
+
+        // Create a hidden directory that looks like .git but isn't
+        // (actual .git creation may be blocked by sandbox)
+        fs::create_dir_all(dir.path().join(".config")).unwrap();
+        File::create(dir.path().join(".config/settings")).unwrap();
+
+        // Create a visible file
         File::create(dir.path().join("visible.rs")).unwrap();
 
-        // Only *.rs covered, but hidden files should not be checked
+        // Only *.rs covered - .config/ files SHOULD be flagged (not excluded)
         let result = run_check("*.rs @owner\n", dir.path());
-        assert!(result.is_ok());
+        assert!(
+            result.has_errors(),
+            "Hidden directories (except .git) should be checked"
+        );
+
+        let uncovered: Vec<_> = result
+            .errors
+            .iter()
+            .filter_map(|e| match e {
+                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            uncovered.contains(&".config/settings"),
+            "Expected .config/settings to be flagged as uncovered"
+        );
+    }
+
+    #[test]
+    fn hidden_files_included() {
+        let dir = TempDir::new().unwrap();
+
+        // Create hidden files that SHOULD be checked
+        File::create(dir.path().join(".gitignore")).unwrap();
+        fs::create_dir_all(dir.path().join(".github")).unwrap();
+        File::create(dir.path().join(".github/CODEOWNERS")).unwrap();
+        File::create(dir.path().join("visible.rs")).unwrap();
+
+        // Only *.rs covered - hidden files should now be flagged as uncovered
+        let result = run_check("*.rs @owner\n", dir.path());
+        assert!(
+            result.has_errors(),
+            "Hidden files should be checked for coverage"
+        );
+
+        let uncovered: Vec<_> = result
+            .errors
+            .iter()
+            .filter_map(|e| match e {
+                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            uncovered.contains(&".gitignore"),
+            "Expected .gitignore to be flagged as uncovered"
+        );
+        assert!(
+            uncovered.contains(&".github/CODEOWNERS"),
+            "Expected .github/CODEOWNERS to be flagged as uncovered"
+        );
+    }
+
+    #[test]
+    fn hidden_files_covered_by_patterns() {
+        let dir = TempDir::new().unwrap();
+
+        // Create hidden files
+        File::create(dir.path().join(".gitignore")).unwrap();
+        fs::create_dir_all(dir.path().join(".github")).unwrap();
+        File::create(dir.path().join(".github/CODEOWNERS")).unwrap();
+        File::create(dir.path().join("visible.rs")).unwrap();
+
+        // Cover all files including hidden ones
+        let result = run_check("* @owner\n", dir.path());
+        assert!(result.is_ok(), "Wildcard should cover hidden files too");
+    }
+
+    #[test]
+    fn gitignore_requires_git_repo() {
+        // .gitignore is only respected when the directory is a git repository.
+        // Since we can't create .git directories in tests (sandbox restriction),
+        // this test verifies that without a git repo, .gitignore is NOT respected.
+        let dir = TempDir::new().unwrap();
+
+        // Create a .gitignore file (won't be respected without .git directory)
+        fs::write(dir.path().join(".gitignore"), "target/\n*.log\n").unwrap();
+
+        // Create files that would be gitignored in a real repo
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        File::create(dir.path().join("target/debug.txt")).unwrap();
+        File::create(dir.path().join("build.log")).unwrap();
+        File::create(dir.path().join("src.rs")).unwrap();
+
+        // Without a .git directory, .gitignore is not respected
+        // so target/ and *.log files WILL be checked
+        let result = run_check("*.rs @owner\n/.gitignore @owner\n", dir.path());
+        assert!(
+            result.has_errors(),
+            "Without .git directory, .gitignore should not be respected"
+        );
+
+        let uncovered: Vec<_> = result
+            .errors
+            .iter()
+            .filter_map(|e| match e {
+                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        // These would be ignored in a real git repo, but not here
+        assert!(
+            uncovered.contains(&"target/debug.txt"),
+            "target/debug.txt should be checked (no git repo)"
+        );
+        assert!(
+            uncovered.contains(&"build.log"),
+            "build.log should be checked (no git repo)"
+        );
+    }
+
+    #[test]
+    fn no_ignore_file_walks_all_files() {
+        let dir = TempDir::new().unwrap();
+
+        // No .ignore or .gitignore file - all files should be walked
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        File::create(dir.path().join("target/output.txt")).unwrap();
+        File::create(dir.path().join("main.rs")).unwrap();
+
+        // Without any ignore file, target/ should be checked
+        let result = run_check("*.rs @owner\n", dir.path());
+        assert!(result.has_errors());
+
+        let uncovered: Vec<_> = result
+            .errors
+            .iter()
+            .filter_map(|e| match e {
+                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            uncovered.contains(&"target/output.txt"),
+            "Without ignore files, target/ files should be checked"
+        );
     }
 }

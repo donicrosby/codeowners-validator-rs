@@ -7,7 +7,14 @@ use crate::parse::{LineKind, Owner};
 use crate::validate::github_client::{TeamExistsResult, UserExistsResult};
 use crate::validate::{ValidationError, ValidationResult};
 use async_trait::async_trait;
+use futures::future::join_all;
 use log::{debug, trace, warn};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+
+/// Maximum number of concurrent GitHub API requests.
+/// Conservative limit to leave headroom for other application requests.
+const MAX_CONCURRENT_REQUESTS: usize = 10;
 
 /// A check that validates owners exist on GitHub.
 ///
@@ -34,7 +41,7 @@ impl OwnersCheck {
     ) -> Option<ValidationError> {
         // Check if owner is in the ignored list
         let owner_str = owner.as_str();
-        if ctx.config.ignored_owners.contains(&owner_str) {
+        if ctx.config.ignored_owners.contains(owner_str.as_ref()) {
             trace!("Skipping ignored owner: {}", owner_str);
             return None;
         }
@@ -148,30 +155,60 @@ impl AsyncCheck for OwnersCheck {
         let mut result = ValidationResult::new();
 
         // Collect all unique owners to avoid duplicate API calls
-        let mut checked_owners = std::collections::HashSet::new();
+        let mut unique_owners: Vec<&Owner> = Vec::new();
+        let mut seen_owners = std::collections::HashSet::new();
 
         for line in &ctx.file.lines {
             if let LineKind::Rule { owners, .. } = &line.kind {
                 for owner in owners {
                     let owner_str = owner.as_str();
-
-                    // Skip if already checked
-                    if checked_owners.contains(&owner_str) {
-                        trace!("Skipping already-checked owner: {}", owner_str);
-                        continue;
-                    }
-                    checked_owners.insert(owner_str);
-
-                    if let Some(error) = self.validate_owner(owner, ctx).await {
-                        result.add_error(error);
+                    if !seen_owners.contains(owner_str.as_ref()) {
+                        seen_owners.insert(owner_str.into_owned());
+                        unique_owners.push(owner);
                     }
                 }
             }
         }
 
         debug!(
-            "Owners check complete: {} unique owners checked, {} errors found",
-            checked_owners.len(),
+            "Collected {} unique owners to validate",
+            unique_owners.len()
+        );
+
+        if unique_owners.is_empty() {
+            return result;
+        }
+
+        // Use bounded concurrency to avoid rate limiting
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
+
+        // Create futures for all owner validations
+        let futures: Vec<_> = unique_owners
+            .into_iter()
+            .map(|owner| {
+                let permit = semaphore.clone();
+                async move {
+                    // Acquire semaphore permit before making API call
+                    let _permit = permit.acquire().await.ok()?;
+                    self.validate_owner(owner, ctx).await
+                }
+            })
+            .collect();
+
+        // Run all validations concurrently (bounded by semaphore)
+        let validation_results = join_all(futures).await;
+
+        // Collect errors
+        for error in validation_results.into_iter().flatten() {
+            // Check if it's a rate limit error and log a warning
+            if matches!(&error, ValidationError::InsufficientAuthorization { .. }) {
+                warn!("GitHub API authorization issue encountered");
+            }
+            result.add_error(error);
+        }
+
+        debug!(
+            "Owners check complete: {} errors found",
             result.errors.len()
         );
         result

@@ -10,7 +10,7 @@ mod github_client;
 mod types;
 
 use github_client::PyGithubClient;
-use types::{PyCheckConfig, PyIssue, PyLine};
+use types::{PyIssue, PyLine};
 
 /// Parse a CODEOWNERS file content and return the parsed AST.
 ///
@@ -53,10 +53,10 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
     Ok(dict.into())
 }
 
-/// Validate a CODEOWNERS file content with synchronous checks.
+/// Validate a CODEOWNERS file content.
 ///
-/// This function runs all synchronous validation checks (syntax, files, duppatterns, etc.)
-/// but does NOT run the owners check which requires GitHub API access.
+/// This function runs validation checks on a CODEOWNERS file. When a `github_client`
+/// is provided, it also verifies that owners exist on GitHub.
 ///
 /// Args:
 ///     content: The CODEOWNERS file content as a string.
@@ -71,137 +71,50 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///         - "syntax": Check for syntax errors
 ///         - "files": Check that patterns match files
 ///         - "duppatterns": Check for duplicate patterns
+///         - "owners": Verify owners exist on GitHub (requires github_client)
 ///         - "notowned": Check for files not covered by any rule (experimental)
 ///         - "avoid-shadowing": Check for shadowed patterns (experimental)
+///     github_client: Optional GitHub client object implementing the GithubClientProtocol.
+///         Required for the "owners" check. Must have methods:
+///         user_exists(username) -> bool,
+///         team_exists(org, team) -> Literal["exists", "not_found", "unauthorized"]
 ///
 /// Returns:
 ///     A dictionary with check results grouped by check name, where each entry contains:
 ///     - List of issues, each with: line, column, message, severity
 ///
 /// Example:
-///     >>> result = validate_codeowners("*.rs @rustacean\\n", "/path/to/repo")
+///     >>> import asyncio
+///     >>> # Without GitHub client (sync checks only)
+///     >>> result = asyncio.run(validate_codeowners("*.rs @rustacean\\n", "/path/to/repo"))
 ///     >>> result["syntax"]
 ///     []  # No syntax errors
-#[pyfunction]
-#[pyo3(signature = (content, repo_path, config=None, checks=None))]
-fn validate_codeowners(
-    py: Python<'_>,
-    content: &str,
-    repo_path: &str,
-    config: Option<&Bound<'_, PyDict>>,
-    checks: Option<Vec<String>>,
-) -> PyResult<Py<PyDict>> {
-    // Parse the content first
-    let parse_result = codeowners_validator_core::parse::parse_codeowners(content);
-
-    // Build check config
-    let check_config = match config {
-        Some(cfg) => PyCheckConfig::from_dict(py, cfg)?.into_check_config(),
-        None => codeowners_validator_core::validate::checks::CheckConfig::new(),
-    };
-
-    // Determine which checks to run
-    let checks_to_run = checks.unwrap_or_else(|| {
-        vec![
-            "syntax".to_string(),
-            "files".to_string(),
-            "duppatterns".to_string(),
-        ]
-    });
-
-    // Create result dict
-    let result_dict = PyDict::new(py);
-
-    // Initialize empty lists for all possible checks
-    for check_name in &[
-        "syntax",
-        "files",
-        "duppatterns",
-        "owners",
-        "notowned",
-        "avoid-shadowing",
-    ] {
-        let empty_list: Vec<HashMap<String, Py<PyAny>>> = vec![];
-        result_dict.set_item(*check_name, empty_list)?;
-    }
-
-    let repo_path = std::path::Path::new(repo_path);
-
-    // Run checks
-    use codeowners_validator_core::validate::checks::{
-        AvoidShadowingCheck, Check, CheckContext, DupPatternsCheck, FilesCheck, NotOwnedCheck,
-        SyntaxCheck,
-    };
-
-    let ctx = CheckContext::new(&parse_result.ast, repo_path, &check_config);
-
-    for check_name in &checks_to_run {
-        let validation_result = match check_name.as_str() {
-            "syntax" => SyntaxCheck::new().run(&ctx),
-            "files" => FilesCheck::new().run(&ctx),
-            "duppatterns" => DupPatternsCheck::new().run(&ctx),
-            "notowned" => NotOwnedCheck::new().run(&ctx),
-            "avoid-shadowing" | "shadowing" => AvoidShadowingCheck::new().run(&ctx),
-            _ => continue, // Skip unknown checks
-        };
-
-        let issues: Vec<Py<PyAny>> = validation_result
-            .errors
-            .iter()
-            .map(|e| PyIssue::from(e).to_py(py))
-            .collect::<PyResult<Vec<_>>>()?;
-
-        let canonical_name = if check_name == "shadowing" {
-            "avoid-shadowing"
-        } else {
-            check_name.as_str()
-        };
-        result_dict.set_item(canonical_name, issues)?;
-    }
-
-    Ok(result_dict.into())
-}
-
-/// Validate a CODEOWNERS file content with GitHub owner verification.
-///
-/// This function runs all validation checks including the async owners check
-/// which verifies that owners exist on GitHub.
-///
-/// Args:
-///     content: The CODEOWNERS file content as a string.
-///     repo_path: Path to the repository root directory.
-///     github_client: A GitHub client object implementing the GithubClientProtocol.
-///         Must have async methods: user_exists(username) -> bool,
-///         team_exists(org, team) -> Literal["exists", "not_found", "unauthorized"]
-///     config: Optional configuration dictionary (see validate_codeowners).
-///     checks: Optional list of checks to run (see validate_codeowners).
-///         The "owners" check is automatically included when using this function.
-///
-/// Returns:
-///     A dictionary with check results grouped by check name.
-///
-/// Example:
+///     >>>
+///     >>> # With GitHub client (includes owner verification)
 ///     >>> class MyGithubClient:
 ///     ...     async def user_exists(self, username: str) -> bool:
 ///     ...         return True  # Implement with actual GitHub API call
 ///     ...     async def team_exists(self, org: str, team: str) -> str:
 ///     ...         return "exists"  # Implement with actual GitHub API call
-///     >>> import asyncio
-///     >>> result = asyncio.run(validate_with_github("*.rs @rustacean\\n", "/path/to/repo", MyGithubClient()))
+///     >>> result = asyncio.run(validate_codeowners(
+///     ...     "*.rs @rustacean\\n",
+///     ...     "/path/to/repo",
+///     ...     github_client=MyGithubClient()
+///     ... ))
 #[pyfunction]
-#[pyo3(signature = (content, repo_path, github_client, config=None, checks=None))]
-fn validate_with_github<'py>(
+#[pyo3(signature = (content, repo_path, config=None, checks=None, github_client=None))]
+fn validate_codeowners<'py>(
     py: Python<'py>,
     content: &str,
     repo_path: &str,
-    github_client: Bound<'py, PyAny>,
     config: Option<&Bound<'py, PyDict>>,
     checks: Option<Vec<String>>,
+    github_client: Option<Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyAny>> {
     // Create the async coroutine
     let content = content.to_string();
     let repo_path = repo_path.to_string();
-    let github_client = github_client.unbind();
+    let github_client = github_client.map(|c| c.unbind());
     let config_dict: Option<HashMap<String, Py<PyAny>>> = config.map(|c| {
         c.iter()
             .filter_map(|(k, v)| k.extract::<String>().ok().map(|key| (key, v.unbind())))
@@ -209,24 +122,26 @@ fn validate_with_github<'py>(
     });
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        validate_with_github_impl(
+        validate_codeowners_impl(
             &content,
             &repo_path,
-            &github_client,
             config_dict.as_ref(),
             checks,
+            github_client,
         )
         .await
     })
 }
 
-async fn validate_with_github_impl(
+async fn validate_codeowners_impl(
     content: &str,
     repo_path: &str,
-    github_client: &Py<PyAny>,
     config: Option<&HashMap<String, Py<PyAny>>>,
     checks: Option<Vec<String>>,
+    github_client: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyDict>> {
+    use codeowners_validator_core::validate::checks::{CheckRunner, OwnersCheck};
+
     // Parse the content first
     let parse_result = codeowners_validator_core::parse::parse_codeowners(content);
 
@@ -266,75 +181,70 @@ async fn validate_with_github_impl(
     });
 
     // Determine which checks to run
-    let mut checks_to_run = checks.unwrap_or_else(|| {
-        vec![
+    let checks_to_run = checks.unwrap_or_else(|| {
+        let mut default = vec![
             "syntax".to_string(),
             "files".to_string(),
             "duppatterns".to_string(),
-            "owners".to_string(),
-        ]
+        ];
+        // Only include owners check by default if github_client is provided
+        if github_client.is_some() {
+            default.push("owners".to_string());
+        }
+        default
     });
-
-    // Always include owners for this function
-    if !checks_to_run.contains(&"owners".to_string()) {
-        checks_to_run.push("owners".to_string());
-    }
 
     let repo_path = std::path::Path::new(repo_path);
 
-    // Run sync checks first
+    // Build CheckRunner with requested checks
     use codeowners_validator_core::validate::checks::{
-        AvoidShadowingCheck, Check, CheckContext, DupPatternsCheck, FilesCheck, NotOwnedCheck,
-        SyntaxCheck,
+        AvoidShadowingCheck, DupPatternsCheck, FilesCheck, NotOwnedCheck, SyntaxCheck,
     };
 
-    let ctx = CheckContext::new(&parse_result.ast, repo_path, &check_config);
-
-    // Collect sync check results
-    let mut sync_results: Vec<(
-        String,
-        Vec<codeowners_validator_core::validate::ValidationError>,
-    )> = Vec::new();
+    let mut runner = CheckRunner::new();
+    let mut run_owners = false;
 
     for check_name in &checks_to_run {
-        if check_name == "owners" {
-            continue; // Handle owners check separately
-        }
-
-        let validation_result = match check_name.as_str() {
-            "syntax" => SyntaxCheck::new().run(&ctx),
-            "files" => FilesCheck::new().run(&ctx),
-            "duppatterns" => DupPatternsCheck::new().run(&ctx),
-            "notowned" => NotOwnedCheck::new().run(&ctx),
-            "avoid-shadowing" | "shadowing" => AvoidShadowingCheck::new().run(&ctx),
-            _ => continue,
+        match check_name.as_str() {
+            "syntax" => runner.add_check(SyntaxCheck::new()),
+            "files" => runner.add_check(FilesCheck::new()),
+            "duppatterns" => runner.add_check(DupPatternsCheck::new()),
+            "notowned" => runner.add_check(NotOwnedCheck::new()),
+            "avoid-shadowing" | "shadowing" => runner.add_check(AvoidShadowingCheck::new()),
+            "owners" => {
+                if github_client.is_some() {
+                    runner.add_async_check(OwnersCheck::new());
+                    run_owners = true;
+                }
+                // Skip owners check if no github_client provided
+            }
+            _ => continue, // Skip unknown checks
         };
-
-        let canonical_name = if check_name == "shadowing" {
-            "avoid-shadowing".to_string()
-        } else {
-            check_name.clone()
-        };
-        sync_results.push((canonical_name, validation_result.errors));
     }
 
-    // Run async owners check if requested
-    let owners_errors = if checks_to_run.contains(&"owners".to_string()) {
-        let py_client = Python::attach(|py| PyGithubClient::new(github_client.clone_ref(py)));
-
-        use codeowners_validator_core::validate::checks::{
-            AsyncCheck, AsyncCheckContext, OwnersCheck,
-        };
-
-        let async_ctx =
-            AsyncCheckContext::new(&parse_result.ast, repo_path, &check_config, &py_client);
-        let validation_result = OwnersCheck::new().run(&async_ctx).await;
-        validation_result.errors
+    // Run all checks using CheckRunner
+    let validation_result = if run_owners {
+        let py_client =
+            Python::attach(|py| PyGithubClient::new(github_client.as_ref().unwrap().clone_ref(py)));
+        runner
+            .run_all(
+                &parse_result.ast,
+                repo_path,
+                &check_config,
+                Some(
+                    &py_client
+                        as &dyn codeowners_validator_core::validate::github_client::GithubClient,
+                ),
+            )
+            .await
     } else {
-        Vec::new()
+        runner
+            .run_all(&parse_result.ast, repo_path, &check_config, None)
+            .await
     };
 
-    // Convert results to Python dicts using pythonize
+    // Convert results to Python dict
+    // Group errors by check name based on the error type
     Python::attach(|py| {
         let result_dict = PyDict::new(py);
 
@@ -351,21 +261,55 @@ async fn validate_with_github_impl(
             result_dict.set_item(*check_name, empty_list)?;
         }
 
-        // Add sync check results
-        for (check_name, errors) in sync_results {
-            let issues: Vec<Py<PyAny>> = errors
-                .iter()
-                .map(|e| PyIssue::from(e).to_py(py))
-                .collect::<PyResult<Vec<_>>>()?;
-            result_dict.set_item(check_name, issues)?;
+        // Group errors by their source check
+        use codeowners_validator_core::validate::ValidationError;
+
+        let mut syntax_errors = Vec::new();
+        let mut files_errors = Vec::new();
+        let mut duppatterns_errors = Vec::new();
+        let mut owners_errors = Vec::new();
+        let mut notowned_errors = Vec::new();
+        let mut shadowing_errors = Vec::new();
+
+        for error in &validation_result.errors {
+            match error {
+                ValidationError::InvalidPatternSyntax { .. }
+                | ValidationError::InvalidOwnerFormat { .. }
+                | ValidationError::UnsupportedPatternSyntax { .. } => {
+                    syntax_errors.push(error);
+                }
+                ValidationError::PatternNotMatching { .. } => {
+                    files_errors.push(error);
+                }
+                ValidationError::DuplicatePattern { .. } => {
+                    duppatterns_errors.push(error);
+                }
+                ValidationError::OwnerNotFound { .. }
+                | ValidationError::InsufficientAuthorization { .. }
+                | ValidationError::OwnerMustBeTeam { .. } => {
+                    owners_errors.push(error);
+                }
+                ValidationError::FileNotOwned { .. } => {
+                    notowned_errors.push(error);
+                }
+                ValidationError::PatternShadowed { .. } => {
+                    shadowing_errors.push(error);
+                }
+            }
         }
 
-        // Add owners check results
-        let owners_issues: Vec<Py<PyAny>> = owners_errors
-            .iter()
-            .map(|e| PyIssue::from(e).to_py(py))
-            .collect::<PyResult<Vec<_>>>()?;
-        result_dict.set_item("owners", owners_issues)?;
+        // Convert each group to Python
+        let convert_errors =
+            |errors: Vec<&ValidationError>, py: Python<'_>| -> PyResult<Vec<Py<PyAny>>> {
+                errors.iter().map(|e| PyIssue::from(*e).to_py(py)).collect()
+            };
+
+        result_dict.set_item("syntax", convert_errors(syntax_errors, py)?)?;
+        result_dict.set_item("files", convert_errors(files_errors, py)?)?;
+        result_dict.set_item("duppatterns", convert_errors(duppatterns_errors, py)?)?;
+        result_dict.set_item("owners", convert_errors(owners_errors, py)?)?;
+        result_dict.set_item("notowned", convert_errors(notowned_errors, py)?)?;
+        result_dict.set_item("avoid-shadowing", convert_errors(shadowing_errors, py)?)?;
 
         Ok(result_dict.into())
     })
@@ -380,7 +324,6 @@ fn _codeowners_validator(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(parse_codeowners, m)?)?;
     m.add_function(wrap_pyfunction!(validate_codeowners, m)?)?;
-    m.add_function(wrap_pyfunction!(validate_with_github, m)?)?;
 
     // Add version info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

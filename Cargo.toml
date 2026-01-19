@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/donicrosby/codeowners-validator-rs"
@@ -17,9 +17,11 @@ repository = "https://github.com/donicrosby/codeowners-validator-rs"
 nom = "8.0"
 thiserror = "2.0"
 walkdir = "2"
+ignore = "0.4"
 globset = "0.4"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }
 async-trait = "0.1"
+futures = "0.3"
 http = "1.0"
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"

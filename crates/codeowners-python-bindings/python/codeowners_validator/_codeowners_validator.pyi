@@ -198,16 +198,17 @@ def parse_codeowners(content: str) -> ParseResultDict:
     """
     ...
 
-def validate_codeowners(
+async def validate_codeowners(
     content: str,
     repo_path: str,
     config: CheckConfigDict | None = None,
     checks: list[str] | None = None,
+    github_client: GithubClientProtocol | None = None,
 ) -> ValidationResultDict:
-    """Validate a CODEOWNERS file content with synchronous checks.
+    """Validate a CODEOWNERS file content.
 
-    This function runs all synchronous validation checks (syntax, files, duppatterns, etc.)
-    but does NOT run the owners check which requires GitHub API access.
+    This function runs validation checks on a CODEOWNERS file. When a `github_client`
+    is provided, it also verifies that owners exist on GitHub.
 
     Args:
         content: The CODEOWNERS file content as a string.
@@ -222,56 +223,35 @@ def validate_codeowners(
             - "syntax": Check for syntax errors
             - "files": Check that patterns match files
             - "duppatterns": Check for duplicate patterns
+            - "owners": Verify owners exist on GitHub (requires github_client)
             - "notowned": Check for files not covered by any rule (experimental)
             - "avoid-shadowing": Check for shadowed patterns (experimental)
+        github_client: Optional GitHub client object implementing the GithubClientProtocol.
+            Required for the "owners" check. Must have methods:
+            user_exists(username) -> bool,
+            team_exists(org, team) -> Literal["exists", "not_found", "unauthorized"]
 
     Returns:
         A dictionary with check results grouped by check name, where each entry contains:
         - List of issues, each with: line, column, message, severity
 
     Example:
-        >>> result = validate_codeowners("*.rs @rustacean\\n", "/path/to/repo")
+        >>> import asyncio
+        >>> # Without GitHub client (sync checks only)
+        >>> result = asyncio.run(validate_codeowners("*.rs @rustacean\\n", "/path/to/repo"))
         >>> result["syntax"]
         []  # No syntax errors
-    """
-    ...
-
-async def validate_with_github(
-    content: str,
-    repo_path: str,
-    github_client: GithubClientProtocol,
-    config: CheckConfigDict | None = None,
-    checks: list[str] | None = None,
-) -> ValidationResultDict:
-    """Validate a CODEOWNERS file content with GitHub owner verification.
-
-    This function runs all validation checks including the async owners check
-    which verifies that owners exist on GitHub.
-
-    Args:
-        content: The CODEOWNERS file content as a string.
-        repo_path: Path to the repository root directory.
-        github_client: A GitHub client object implementing the GithubClientProtocol.
-            Must have methods: user_exists(username) -> bool,
-            team_exists(org, team) -> Literal["exists", "not_found", "unauthorized"]
-        config: Optional configuration dictionary (see validate_codeowners).
-        checks: Optional list of checks to run (see validate_codeowners).
-            The "owners" check is automatically included when using this function.
-
-    Returns:
-        A dictionary with check results grouped by check name.
-
-    Example:
+        >>>
+        >>> # With GitHub client (includes owner verification)
         >>> class MyGithubClient:
         ...     async def user_exists(self, username: str) -> bool:
         ...         return True  # Implement with actual GitHub API call
         ...     async def team_exists(self, org: str, team: str) -> str:
         ...         return "exists"  # Implement with actual GitHub API call
-        >>> import asyncio
-        >>> result = asyncio.run(validate_with_github(
+        >>> result = asyncio.run(validate_codeowners(
         ...     "*.rs @rustacean\\n",
         ...     "/path/to/repo",
-        ...     MyGithubClient()
+        ...     github_client=MyGithubClient()
         ... ))
     """
     ...
