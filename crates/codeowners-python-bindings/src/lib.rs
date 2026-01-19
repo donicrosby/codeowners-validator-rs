@@ -122,8 +122,14 @@ fn validate_codeowners<'py>(
     });
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        validate_codeowners_impl(&content, &repo_path, config_dict.as_ref(), checks, github_client)
-            .await
+        validate_codeowners_impl(
+            &content,
+            &repo_path,
+            config_dict.as_ref(),
+            checks,
+            github_client,
+        )
+        .await
     })
 }
 
@@ -225,7 +231,10 @@ async fn validate_codeowners_impl(
                 &parse_result.ast,
                 repo_path,
                 &check_config,
-                Some(&py_client as &dyn codeowners_validator_core::validate::github_client::GithubClient),
+                Some(
+                    &py_client
+                        as &dyn codeowners_validator_core::validate::github_client::GithubClient,
+                ),
             )
             .await
     } else {
@@ -292,10 +301,7 @@ async fn validate_codeowners_impl(
         // Convert each group to Python
         let convert_errors =
             |errors: Vec<&ValidationError>, py: Python<'_>| -> PyResult<Vec<Py<PyAny>>> {
-                errors
-                    .iter()
-                    .map(|e| PyIssue::from(*e).to_py(py))
-                    .collect()
+                errors.iter().map(|e| PyIssue::from(*e).to_py(py)).collect()
             };
 
         result_dict.set_item("syntax", convert_errors(syntax_errors, py)?)?;

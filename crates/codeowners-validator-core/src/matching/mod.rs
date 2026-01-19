@@ -178,11 +178,7 @@ fn normalize_pattern(pattern: &str) -> (String, bool, bool) {
         .strip_prefix('/')
         .unwrap_or(pattern)
         .strip_suffix('/')
-        .unwrap_or(if anchored {
-            &pattern[1..]
-        } else {
-            pattern
-        });
+        .unwrap_or(if anchored { &pattern[1..] } else { pattern });
 
     // Determine if we need **/ prefix (for patterns without any slash that aren't anchored)
     let needs_prefix = !anchored && !core.contains('/') && !pattern.contains('/');

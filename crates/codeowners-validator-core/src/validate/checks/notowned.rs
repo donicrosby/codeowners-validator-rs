@@ -6,7 +6,7 @@
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::LineKind;
-use crate::validate::file_walker::{list_files, FileWalkerConfig};
+use crate::validate::file_walker::{FileWalkerConfig, list_files};
 use crate::validate::{ValidationError, ValidationResult};
 
 /// A check that identifies files without CODEOWNERS coverage.
@@ -276,7 +276,10 @@ mod tests {
 
         // Only *.rs covered - hidden files should now be flagged as uncovered
         let result = run_check("*.rs @owner\n", dir.path());
-        assert!(result.has_errors(), "Hidden files should be checked for coverage");
+        assert!(
+            result.has_errors(),
+            "Hidden files should be checked for coverage"
+        );
 
         let uncovered: Vec<_> = result
             .errors

@@ -5,7 +5,7 @@
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::LineKind;
-use crate::validate::file_walker::{list_files, FileWalkerConfig};
+use crate::validate::file_walker::{FileWalkerConfig, list_files};
 use crate::validate::{ValidationError, ValidationResult};
 use log::{debug, trace};
 
