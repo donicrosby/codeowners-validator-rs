@@ -53,6 +53,8 @@
 //! - [`validate`]: Validation rules for parsed files
 //! - [`matching`]: Pattern matching for CODEOWNERS files
 
+use std::path::{Path, PathBuf};
+
 pub mod matching;
 pub mod parse;
 pub mod validate;
@@ -63,3 +65,34 @@ pub use validate::checks::{
     AsyncCheck, AsyncCheckContext, Check, CheckConfig, CheckContext, CheckRunner,
 };
 pub use validate::{ValidationResult, validate_syntax};
+
+/// Finds the CODEOWNERS file in a repository.
+///
+/// Searches in the following locations (in order):
+/// 1. `.github/CODEOWNERS`
+/// 2. `CODEOWNERS`
+/// 3. `docs/CODEOWNERS`
+///
+/// Returns `Some(path)` if found, `None` otherwise.
+///
+/// # Example
+///
+/// ```no_run
+/// use std::path::Path;
+/// use codeowners_validator_core::find_codeowners_file;
+///
+/// let repo_path = Path::new("/path/to/repo");
+/// if let Some(codeowners_path) = find_codeowners_file(repo_path) {
+///     println!("Found CODEOWNERS at: {}", codeowners_path.display());
+/// } else {
+///     eprintln!("CODEOWNERS file not found");
+/// }
+/// ```
+pub fn find_codeowners_file(repo_path: &Path) -> Option<PathBuf> {
+    let locations = [
+        repo_path.join(".github/CODEOWNERS"),
+        repo_path.join("CODEOWNERS"),
+        repo_path.join("docs/CODEOWNERS"),
+    ];
+    locations.into_iter().find(|p| p.exists())
+}

@@ -199,20 +199,22 @@ def parse_codeowners(content: str) -> ParseResultDict:
     ...
 
 async def validate_codeowners(
-    content: str,
     repo_path: str,
     config: CheckConfigDict | None = None,
     checks: list[str] | None = None,
     github_client: GithubClientProtocol | None = None,
 ) -> ValidationResultDict:
-    """Validate a CODEOWNERS file content.
+    """Validate a CODEOWNERS file in a repository.
 
-    This function runs validation checks on a CODEOWNERS file. When a `github_client`
-    is provided, it also verifies that owners exist on GitHub.
+    This function runs validation checks on a CODEOWNERS file. It automatically
+    finds the CODEOWNERS file in the repository by searching in standard locations:
+    `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`.
+
+    When a `github_client` is provided, it also verifies that owners exist on GitHub.
 
     Args:
-        content: The CODEOWNERS file content as a string.
-        repo_path: Path to the repository root directory.
+        repo_path: Path to the repository root directory. The CODEOWNERS file will
+            be automatically located within this directory.
         config: Optional configuration dictionary with keys:
             - ignored_owners: List of owners to ignore during validation
             - owners_must_be_teams: Whether owners must be teams (bool)
@@ -235,10 +237,14 @@ async def validate_codeowners(
         A dictionary with check results grouped by check name, where each entry contains:
         - List of issues, each with: line, column, message, severity
 
+    Raises:
+        FileNotFoundError: If no CODEOWNERS file is found in the repository.
+        IOError: If the CODEOWNERS file cannot be read.
+
     Example:
         >>> import asyncio
         >>> # Without GitHub client (sync checks only)
-        >>> result = asyncio.run(validate_codeowners("*.rs @rustacean\\n", "/path/to/repo"))
+        >>> result = asyncio.run(validate_codeowners("/path/to/repo"))
         >>> result["syntax"]
         []  # No syntax errors
         >>>
@@ -249,7 +255,6 @@ async def validate_codeowners(
         ...     async def team_exists(self, org: str, team: str) -> str:
         ...         return "exists"  # Implement with actual GitHub API call
         >>> result = asyncio.run(validate_codeowners(
-        ...     "*.rs @rustacean\\n",
         ...     "/path/to/repo",
         ...     github_client=MyGithubClient()
         ... ))
