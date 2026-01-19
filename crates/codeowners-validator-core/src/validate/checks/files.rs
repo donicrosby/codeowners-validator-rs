@@ -5,10 +5,9 @@
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::LineKind;
+use crate::validate::file_walker::{list_files, FileWalkerConfig};
 use crate::validate::{ValidationError, ValidationResult};
 use log::{debug, trace};
-use std::path::Path;
-use walkdir::WalkDir;
 
 /// A check that verifies patterns match existing files.
 ///
@@ -25,56 +24,9 @@ impl FilesCheck {
         Self
     }
 
-    /// Lists all files in the repository, relative to the root.
-    fn list_files(repo_path: &Path) -> Vec<String> {
-        debug!("Listing files in repository: {:?}", repo_path);
-        let mut files = Vec::new();
-
-        for entry in WalkDir::new(repo_path)
-            .follow_links(false)
-            .into_iter()
-            .filter_entry(|e| {
-                // Filter out hidden files and directories at the iterator level
-                // This prevents descending into hidden directories
-                // But always allow the root directory itself
-                if e.depth() == 0 {
-                    return true;
-                }
-                e.file_name()
-                    .to_str()
-                    .map(|s| !s.starts_with('.'))
-                    .unwrap_or(false)
-            })
-            .filter_map(|e| e.ok())
-        {
-            // Skip the root directory itself
-            if entry.path() == repo_path {
-                continue;
-            }
-
-            // Get path relative to repo root
-            if let Ok(relative) = entry.path().strip_prefix(repo_path)
-                && let Some(path_str) = relative.to_str()
-            {
-                // Normalize to forward slashes
-                let normalized = path_str.replace('\\', "/");
-                files.push(normalized);
-            }
-        }
-
-        debug!("Found {} files in repository", files.len());
-        trace!("Files: {:?}", files);
-        files
-    }
-
     /// Checks if a pattern matches any file in the given list.
     fn pattern_matches_any(pattern: &Pattern, files: &[String]) -> bool {
-        for file in files {
-            if pattern.matches(file) {
-                return true;
-            }
-        }
-        false
+        files.iter().any(|file| pattern.matches(file))
     }
 }
 
@@ -87,8 +39,8 @@ impl Check for FilesCheck {
         debug!("Running files check");
         let mut result = ValidationResult::new();
 
-        // List all files in the repository
-        let files = Self::list_files(ctx.repo_path);
+        // List all files in the repository (excludes hidden, includes dirs)
+        let files = list_files(ctx.repo_path, &FileWalkerConfig::for_files_check());
 
         // Check each pattern
         for line in &ctx.file.lines {
@@ -119,6 +71,7 @@ mod tests {
     use crate::parse::parse_codeowners;
     use crate::validate::checks::CheckConfig;
     use std::fs::{self, File};
+    use std::path::Path;
     use tempfile::TempDir;
 
     fn setup_test_dir() -> TempDir {
@@ -230,7 +183,7 @@ mod tests {
     #[test]
     fn list_files_basic() {
         let dir = setup_test_dir();
-        let files = FilesCheck::list_files(dir.path());
+        let files = list_files(dir.path(), &FileWalkerConfig::for_files_check());
 
         assert!(files.contains(&"src/main.rs".to_string()));
         assert!(files.contains(&"src/lib.rs".to_string()));
@@ -248,9 +201,9 @@ mod tests {
         File::create(dir.path().join(".hidden_file")).unwrap();
         File::create(dir.path().join("visible.rs")).unwrap();
 
-        let files = FilesCheck::list_files(dir.path());
+        let files = list_files(dir.path(), &FileWalkerConfig::for_files_check());
 
-        // Currently FilesCheck still filters hidden files
+        // FilesCheck config filters hidden files
         assert!(files.contains(&"visible.rs".to_string()));
         assert!(!files.iter().any(|f| f.contains(".hidden")));
     }

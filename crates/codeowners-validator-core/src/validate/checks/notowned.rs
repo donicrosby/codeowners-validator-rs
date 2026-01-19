@@ -6,9 +6,8 @@
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::LineKind;
+use crate::validate::file_walker::{list_files, FileWalkerConfig};
 use crate::validate::{ValidationError, ValidationResult};
-use ignore::WalkBuilder;
-use std::path::Path;
 
 /// A check that identifies files without CODEOWNERS coverage.
 ///
@@ -23,68 +22,14 @@ impl NotOwnedCheck {
         Self
     }
 
-    /// Lists all files in the repository, relative to the root.
-    ///
-    /// This function:
-    /// - Includes hidden files/directories (like `.github/`)
-    /// - Respects `.gitignore` files (excludes gitignored files)
-    /// - Always excludes the `.git/` directory
-    fn list_files(repo_path: &Path) -> Vec<String> {
-        let mut files = Vec::new();
-
-        // Use WalkBuilder from the `ignore` crate which:
-        // - Respects .gitignore by default (when in a git repo)
-        // - Skips .git directory by default
-        // - Can be configured to include hidden files
-        let walker = WalkBuilder::new(repo_path)
-            .hidden(false) // Include hidden files (like .github/)
-            .ignore(false) // Don't respect .ignore files (not a git standard)
-            .git_ignore(true) // Respect .gitignore (default, but explicit)
-            .git_global(true) // Respect global gitignore
-            .git_exclude(true) // Respect .git/info/exclude
-            .follow_links(false) // Don't follow symlinks
-            .build();
-
-        for entry in walker.filter_map(|e| e.ok()) {
-            // Skip the root directory itself
-            if entry.path() == repo_path {
-                continue;
-            }
-
-            // Only include files, not directories
-            if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                // Get path relative to repo root
-                if let Ok(relative) = entry.path().strip_prefix(repo_path)
-                    && let Some(path_str) = relative.to_str()
-                {
-                    // Normalize to forward slashes
-                    let normalized = path_str.replace('\\', "/");
-                    files.push(normalized);
-                }
-            }
-        }
-
-        files
-    }
-
     /// Checks if a file is covered by any of the patterns.
     fn is_file_covered(file: &str, patterns: &[Pattern]) -> bool {
-        for pattern in patterns {
-            if pattern.matches(file) {
-                return true;
-            }
-        }
-        false
+        patterns.iter().any(|pattern| pattern.matches(file))
     }
 
     /// Checks if a file matches any skip pattern.
     fn should_skip_file(file: &str, skip_patterns: &[Pattern]) -> bool {
-        for pattern in skip_patterns {
-            if pattern.matches(file) {
-                return true;
-            }
-        }
-        false
+        skip_patterns.iter().any(|pattern| pattern.matches(file))
     }
 }
 
@@ -114,8 +59,8 @@ impl Check for NotOwnedCheck {
             .filter_map(|p| Pattern::new(p))
             .collect();
 
-        // List all files in the repository
-        let files = Self::list_files(ctx.repo_path);
+        // List all files (includes hidden, respects gitignore)
+        let files = list_files(ctx.repo_path, &FileWalkerConfig::for_not_owned_check());
 
         // Check each file
         for file in files {
@@ -140,6 +85,7 @@ mod tests {
     use crate::parse::parse_codeowners;
     use crate::validate::checks::CheckConfig;
     use std::fs::{self, File};
+    use std::path::Path;
     use tempfile::TempDir;
 
     fn setup_test_dir() -> TempDir {
