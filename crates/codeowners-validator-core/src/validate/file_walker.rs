@@ -9,6 +9,7 @@ use std::path::Path;
 
 /// Configuration for file walking behavior.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct FileWalkerConfig {
     /// Whether to include hidden files and directories (starting with `.`).
     /// Default: false
@@ -21,15 +22,6 @@ pub struct FileWalkerConfig {
     pub include_directories: bool,
 }
 
-impl Default for FileWalkerConfig {
-    fn default() -> Self {
-        Self {
-            include_hidden: false,
-            respect_gitignore: false,
-            include_directories: false,
-        }
-    }
-}
 
 impl FileWalkerConfig {
     /// Creates a new config with default settings.
