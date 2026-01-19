@@ -6,7 +6,8 @@
 use super::ast::{CodeownersFile, Line, Owner};
 use super::error::{ParseError, ParseResult};
 use super::lexer::{
-    is_blank_line, make_owner, make_pattern, parse_comment_line, parse_rule_components,
+    is_blank_line, make_owner, make_pattern, parse_comment_line, parse_pattern_only,
+    parse_rule_components,
 };
 use super::span::Span;
 use log::{debug, trace};
@@ -17,6 +18,9 @@ pub struct ParserConfig {
     /// If true, parsing stops at the first error (strict mode).
     /// If false, errors are collected and parsing continues (lenient mode).
     pub strict: bool,
+    /// If true, patterns without owners are allowed (creates rules with empty owner list).
+    /// If false, patterns without owners are parse errors.
+    pub allow_unowned_patterns: bool,
 }
 
 impl ParserConfig {
@@ -27,19 +31,36 @@ impl ParserConfig {
 
     /// Creates a strict mode parser config.
     pub fn strict() -> Self {
-        Self { strict: true }
+        Self {
+            strict: true,
+            ..Default::default()
+        }
     }
 
     /// Creates a lenient mode parser config.
     pub fn lenient() -> Self {
-        Self { strict: false }
+        Self {
+            strict: false,
+            ..Default::default()
+        }
+    }
+
+    /// Sets whether unowned patterns are allowed.
+    pub fn with_allow_unowned_patterns(mut self, value: bool) -> Self {
+        self.allow_unowned_patterns = value;
+        self
     }
 }
 
 /// Parses a single line of a CODEOWNERS file.
 ///
 /// Returns the parsed Line AST node, or an error if the line is invalid.
-fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Line, ParseError> {
+fn parse_line(
+    line_text: &str,
+    line_num: usize,
+    line_offset: usize,
+    config: &ParserConfig,
+) -> Result<Line, ParseError> {
     let line_span = Span::new(line_offset, line_num, 1, line_text.len());
 
     // Check for blank line
@@ -52,7 +73,7 @@ fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Li
         return Ok(Line::comment(comment_content, line_span));
     }
 
-    // Try to parse as a rule line
+    // Try to parse as a rule line (pattern + owners)
     match parse_rule_components(line_text) {
         Ok((_remaining, components)) => {
             // Create pattern span
@@ -82,7 +103,21 @@ fn parse_line(line_text: &str, line_num: usize, line_offset: usize) -> Result<Li
             // Check if it looks like a pattern with no owners
             let trimmed = line_text.trim();
             if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                // It has content but no owners - this is an error
+                // It has content but no owners
+                if config.allow_unowned_patterns {
+                    // Parse just the pattern and create a rule with empty owners
+                    if let Ok((_, pattern_only)) = parse_pattern_only(line_text) {
+                        let pattern_span = Span::new(
+                            line_offset + pattern_only.pattern_offset,
+                            line_num,
+                            pattern_only.pattern_offset + 1,
+                            pattern_only.pattern.len(),
+                        );
+                        let pattern = make_pattern(pattern_only.pattern, pattern_span);
+                        return Ok(Line::rule(pattern, Vec::new(), line_span));
+                    }
+                }
+                // Not allowed or couldn't parse pattern - error
                 let error_span = Span::new(line_offset, line_num, 1, line_text.len());
                 Err(ParseError::missing_owners(error_span))
             } else {
@@ -107,7 +142,7 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
     for (line_idx, line_text) in input.lines().enumerate() {
         let line_num = line_idx + 1; // 1-based line numbers
 
-        match parse_line(line_text, line_num, offset) {
+        match parse_line(line_text, line_num, offset, config) {
             Ok(line) => {
                 trace!("Line {}: parsed successfully", line_num);
                 lines.push(line);
@@ -376,17 +411,98 @@ mod tests {
     fn config_default_is_lenient() {
         let config = ParserConfig::default();
         assert!(!config.strict);
+        assert!(!config.allow_unowned_patterns);
     }
 
     #[test]
     fn config_strict_mode() {
         let config = ParserConfig::strict();
         assert!(config.strict);
+        assert!(!config.allow_unowned_patterns);
     }
 
     #[test]
     fn config_lenient_mode() {
         let config = ParserConfig::lenient();
         assert!(!config.strict);
+        assert!(!config.allow_unowned_patterns);
+    }
+
+    #[test]
+    fn config_allow_unowned_patterns() {
+        let config = ParserConfig::new().with_allow_unowned_patterns(true);
+        assert!(config.allow_unowned_patterns);
+    }
+
+    #[test]
+    fn parse_unowned_pattern_when_allowed() {
+        let config = ParserConfig::new().with_allow_unowned_patterns(true);
+        let input = "*.rs\n*.js @frontend\n";
+        let result = parse_codeowners_with_config(input, &config);
+
+        // Should succeed without errors
+        assert!(result.is_ok());
+        assert_eq!(result.ast.lines.len(), 2);
+
+        // First line should be a rule with empty owners
+        if let LineKind::Rule { pattern, owners } = &result.ast.lines[0].kind {
+            assert_eq!(pattern.text, "*.rs");
+            assert!(owners.is_empty());
+        } else {
+            panic!("Expected rule with empty owners");
+        }
+
+        // Second line should be a rule with owner
+        if let LineKind::Rule { pattern, owners } = &result.ast.lines[1].kind {
+            assert_eq!(pattern.text, "*.js");
+            assert_eq!(owners.len(), 1);
+        } else {
+            panic!("Expected rule with owner");
+        }
+    }
+
+    #[test]
+    fn parse_unowned_pattern_when_not_allowed() {
+        let config = ParserConfig::new().with_allow_unowned_patterns(false);
+        let input = "*.rs\n*.js @frontend\n";
+        let result = parse_codeowners_with_config(input, &config);
+
+        // Should have errors
+        assert!(result.has_errors());
+        assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn parse_multiple_unowned_patterns() {
+        let config = ParserConfig::new().with_allow_unowned_patterns(true);
+        let input = "*.rs\n*.js\n*.md\n";
+        let result = parse_codeowners_with_config(input, &config);
+
+        assert!(result.is_ok());
+        assert_eq!(result.ast.lines.len(), 3);
+
+        for line in &result.ast.lines {
+            if let LineKind::Rule { owners, .. } = &line.kind {
+                assert!(owners.is_empty());
+            } else {
+                panic!("Expected rule");
+            }
+        }
+    }
+
+    #[test]
+    fn unowned_pattern_span_is_correct() {
+        let config = ParserConfig::new().with_allow_unowned_patterns(true);
+        let input = "  /src/\n";
+        let result = parse_codeowners_with_config(input, &config);
+
+        assert!(result.is_ok());
+        if let LineKind::Rule { pattern, .. } = &result.ast.lines[0].kind {
+            assert_eq!(pattern.text, "/src/");
+            assert_eq!(pattern.span.column, 3); // After 2 spaces
+            assert_eq!(pattern.span.length, 5); // "/src/"
+        } else {
+            panic!("Expected rule");
+        }
     }
 }

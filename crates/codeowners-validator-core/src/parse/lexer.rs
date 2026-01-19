@@ -48,6 +48,35 @@ pub struct RuleComponents<'a> {
     pub owner_offsets: Vec<usize>,
 }
 
+/// Result of parsing just a pattern (for unowned patterns).
+#[derive(Debug, Clone)]
+pub struct PatternOnly<'a> {
+    /// The pattern text.
+    pub pattern: &'a str,
+    /// Byte offset of pattern start within the line.
+    pub pattern_offset: usize,
+}
+
+/// Parses just a pattern from a line (no owners required).
+///
+/// Used when `allow_unowned_patterns` is enabled.
+pub fn parse_pattern_only(input: &str) -> IResult<&str, PatternOnly<'_>> {
+    // Skip leading whitespace
+    let (after_ws, leading_ws) = space0(input)?;
+    let pattern_offset = leading_ws.len();
+
+    // Parse pattern
+    let (rest, pattern) = take_while1(is_pattern_char)(after_ws)?;
+
+    Ok((
+        rest,
+        PatternOnly {
+            pattern,
+            pattern_offset,
+        },
+    ))
+}
+
 /// Parses the components of a rule line (pattern + owners).
 ///
 /// This parser extracts the raw text and offsets without constructing

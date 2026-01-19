@@ -4,6 +4,7 @@
 //! parsed CODEOWNERS file content.
 
 use super::span::Span;
+use std::borrow::Cow;
 
 /// Represents a pattern in a CODEOWNERS rule.
 ///
@@ -92,11 +93,15 @@ impl Owner {
     }
 
     /// Returns the raw text representation of this owner.
-    pub fn as_str(&self) -> String {
+    ///
+    /// Returns a `Cow<str>` to avoid allocations when possible:
+    /// - For emails, returns a borrowed reference
+    /// - For users and teams, returns an owned formatted string
+    pub fn as_str(&self) -> Cow<'_, str> {
         match self {
-            Owner::User { name, .. } => format!("@{}", name),
-            Owner::Team { org, team, .. } => format!("@{}/{}", org, team),
-            Owner::Email { email, .. } => email.clone(),
+            Owner::User { name, .. } => Cow::Owned(format!("@{}", name)),
+            Owner::Team { org, team, .. } => Cow::Owned(format!("@{}/{}", org, team)),
+            Owner::Email { email, .. } => Cow::Borrowed(email),
         }
     }
 }

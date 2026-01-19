@@ -34,7 +34,7 @@ impl OwnersCheck {
     ) -> Option<ValidationError> {
         // Check if owner is in the ignored list
         let owner_str = owner.as_str();
-        if ctx.config.ignored_owners.contains(&owner_str) {
+        if ctx.config.ignored_owners.contains(owner_str.as_ref()) {
             trace!("Skipping ignored owner: {}", owner_str);
             return None;
         }
@@ -156,11 +156,11 @@ impl AsyncCheck for OwnersCheck {
                     let owner_str = owner.as_str();
 
                     // Skip if already checked
-                    if checked_owners.contains(&owner_str) {
+                    if checked_owners.contains(owner_str.as_ref()) {
                         trace!("Skipping already-checked owner: {}", owner_str);
                         continue;
                     }
-                    checked_owners.insert(owner_str);
+                    checked_owners.insert(owner_str.into_owned());
 
                     if let Some(error) = self.validate_owner(owner, ctx).await {
                         result.add_error(error);

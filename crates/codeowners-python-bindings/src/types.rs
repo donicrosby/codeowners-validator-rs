@@ -3,10 +3,8 @@
 use codeowners_validator_core::parse::{Line, LineKind, Owner, Pattern, Span};
 use codeowners_validator_core::validate::{Severity, ValidationError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 use pythonize::pythonize;
 use serde::Serialize;
-use std::collections::HashSet;
 
 /// Python wrapper for Span.
 #[derive(Debug, Clone, Serialize)]
@@ -202,64 +200,3 @@ impl PyIssue {
     }
 }
 
-/// Python wrapper for CheckConfig.
-#[derive(Debug, Clone, Default)]
-pub struct PyCheckConfig {
-    pub ignored_owners: HashSet<String>,
-    pub owners_must_be_teams: bool,
-    pub allow_unowned_patterns: bool,
-    pub skip_patterns: Vec<String>,
-    pub repository: Option<String>,
-}
-
-impl PyCheckConfig {
-    pub fn from_dict(_py: Python<'_>, dict: &Bound<'_, PyDict>) -> PyResult<Self> {
-        let mut config = Self::default();
-
-        if let Ok(Some(val)) = dict.get_item("ignored_owners")
-            && let Ok(list) = val.extract::<Vec<String>>()
-        {
-            config.ignored_owners = list.into_iter().collect();
-        }
-
-        if let Ok(Some(val)) = dict.get_item("owners_must_be_teams")
-            && let Ok(b) = val.extract::<bool>()
-        {
-            config.owners_must_be_teams = b;
-        }
-
-        if let Ok(Some(val)) = dict.get_item("allow_unowned_patterns")
-            && let Ok(b) = val.extract::<bool>()
-        {
-            config.allow_unowned_patterns = b;
-        }
-
-        if let Ok(Some(val)) = dict.get_item("skip_patterns")
-            && let Ok(list) = val.extract::<Vec<String>>()
-        {
-            config.skip_patterns = list;
-        }
-
-        if let Ok(Some(val)) = dict.get_item("repository")
-            && let Ok(s) = val.extract::<String>()
-        {
-            config.repository = Some(s);
-        }
-
-        Ok(config)
-    }
-
-    pub fn into_check_config(self) -> codeowners_validator_core::validate::checks::CheckConfig {
-        let mut config = codeowners_validator_core::validate::checks::CheckConfig::new()
-            .with_ignored_owners(self.ignored_owners)
-            .with_owners_must_be_teams(self.owners_must_be_teams)
-            .with_allow_unowned_patterns(self.allow_unowned_patterns)
-            .with_skip_patterns(self.skip_patterns);
-
-        if let Some(repo) = self.repository {
-            config = config.with_repository(repo);
-        }
-
-        config
-    }
-}
