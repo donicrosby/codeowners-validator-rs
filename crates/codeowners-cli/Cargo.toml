@@ -6,9 +6,18 @@ license.workspace = true
 description = "CLI tool for validating GitHub CODEOWNERS files"
 readme = "../../README.md"
 
+[features]
+default = []
+generate = ["codeowners-validator-core/generate"]
+
 [[bin]]
 name = "codeowners-validator"
 path = "src/main.rs"
+
+[[bin]]
+name = "generate-fixtures"
+path = "src/bin/generate_fixtures.rs"
+required-features = ["generate"]
 
 [dependencies]
 codeowners-validator-core.workspace = true

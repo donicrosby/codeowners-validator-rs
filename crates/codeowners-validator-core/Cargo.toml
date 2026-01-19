@@ -6,6 +6,10 @@ license.workspace = true
 description = "A library for parsing and validating GitHub CODEOWNERS files"
 readme = "../../README.md"
 
+[features]
+default = []
+generate = ["rand"]  # Enable CODEOWNERS file generation for benchmarking
+
 [dependencies]
 nom.workspace = true
 thiserror.workspace = true
@@ -17,8 +21,15 @@ futures.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+rand = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
 wiremock.workspace = true
 tokio-test.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "benchmarks"
+harness = false
+required-features = ["generate"]

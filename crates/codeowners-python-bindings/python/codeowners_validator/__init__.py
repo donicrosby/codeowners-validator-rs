@@ -49,6 +49,12 @@ from codeowners_validator._codeowners_validator import (
     validate_codeowners,
 )
 
+# The generate function is available when built with the 'generate' feature (default)
+try:
+    from codeowners_validator._codeowners_validator import generate_codeowners_fixture
+except ImportError:
+    generate_codeowners_fixture = None  # type: ignore[assignment,misc]
+
 if TYPE_CHECKING:
     from codeowners_validator._codeowners_validator import (
         AstDict,
@@ -70,6 +76,7 @@ __all__ = [
     # Functions
     "parse_codeowners",
     "validate_codeowners",
+    "generate_codeowners_fixture",
     # Types (for type checking)
     "AstDict",
     "CheckConfigDict",
