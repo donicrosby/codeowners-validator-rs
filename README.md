@@ -49,13 +49,13 @@ The Python package requires [maturin](https://github.com/PyO3/maturin) to build 
 
 ```bash
 # Install directly from git
-uv pip install "codeowners-validator @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+uv add "codeowners-validator @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
 
 # With optional GitHub client dependencies
-uv pip install "codeowners-validator[githubkit] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+uv add "codeowners-validator[githubkit] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
 
 # Or with PyGithub
-uv pip install "codeowners-validator[pygithub] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+uv add "codeowners-validator[pygithub] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
 ```
 
 #### Using pip
@@ -75,7 +75,7 @@ git clone https://github.com/donicrosby/codeowners-validator-rs.git
 cd codeowners-validator-rs/crates/codeowners-python-bindings
 
 # Using uv
-uv pip install -e .
+uv add -e .
 
 # Or using pip with maturin
 pip install maturin
@@ -376,20 +376,36 @@ codeowners-validator -vv   # Trace level
 
 ### Python Types
 
-The Python bindings include full type stubs. Key types:
+The Python bindings include full type stubs for excellent IDE support. All types are exported and available for import:
 
 ```python
 from codeowners_validator import (
+    # Functions
     parse_codeowners,      # Parse CODEOWNERS content
-    validate_codeowners,   # Validate without GitHub API
-    validate_with_github,  # Validate with GitHub owner verification
+    validate_codeowners,   # Validate (with optional GitHub client)
+    # Protocol for custom GitHub clients
+    GithubClientProtocol,
+    # Configuration and result types
+    CheckConfigDict,
+    ParseResultDict,
+    ValidationResultDict,
+    IssueDict,
+    # AST types
+    AstDict,
+    LineDict,
+    LineKindDict,
+    OwnerDict,
+    PatternDict,
+    SpanDict,
 )
 ```
 
 #### Configuration Dictionary
 
 ```python
-config = {
+from codeowners_validator import CheckConfigDict
+
+config: CheckConfigDict = {
     "ignored_owners": ["@bot", "@ghost"],  # Owners to skip validation
     "owners_must_be_teams": False,         # Require @org/team format
     "allow_unowned_patterns": True,        # Allow patterns without owners
@@ -400,12 +416,28 @@ config = {
 
 #### GitHub Client Protocol
 
-Your GitHub client must implement these methods:
+Implement `GithubClientProtocol` to create custom GitHub clients for owner verification:
 
 ```python
-class GithubClientProtocol:
-    def user_exists(self, username: str) -> bool | Awaitable[bool]: ...
-    def team_exists(self, org: str, team: str) -> Literal["exists", "not_found", "unauthorized"] | Awaitable[...]: ...
+from typing import Literal
+from codeowners_validator import GithubClientProtocol, validate_codeowners
+
+class MyGithubClient(GithubClientProtocol):
+    """Custom GitHub client implementing the protocol."""
+    
+    async def user_exists(self, username: str) -> bool:
+        # Your implementation
+        ...
+    
+    async def team_exists(
+        self, org: str, team: str
+    ) -> Literal["exists", "not_found", "unauthorized"]:
+        # Your implementation
+        ...
+
+# Usage
+client = MyGithubClient()
+result = await validate_codeowners(content, repo_path, github_client=client)
 ```
 
 ---
