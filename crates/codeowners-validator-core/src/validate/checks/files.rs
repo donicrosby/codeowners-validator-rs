@@ -241,15 +241,17 @@ mod tests {
     #[test]
     fn list_files_skips_hidden() {
         let dir = TempDir::new().unwrap();
-        fs::create_dir_all(dir.path().join(".git")).unwrap();
-        File::create(dir.path().join(".git/config")).unwrap();
-        File::create(dir.path().join(".gitignore")).unwrap();
+
+        // Create hidden files and directories
+        fs::create_dir_all(dir.path().join(".hidden_dir")).unwrap();
+        File::create(dir.path().join(".hidden_dir/config")).unwrap();
+        File::create(dir.path().join(".hidden_file")).unwrap();
         File::create(dir.path().join("visible.rs")).unwrap();
 
         let files = FilesCheck::list_files(dir.path());
 
+        // Currently FilesCheck still filters hidden files
         assert!(files.contains(&"visible.rs".to_string()));
-        assert!(!files.iter().any(|f| f.contains(".git")));
-        assert!(!files.contains(&".gitignore".to_string()));
+        assert!(!files.iter().any(|f| f.contains(".hidden")));
     }
 }
