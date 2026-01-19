@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "codeowners-validator"
-version = "0.2.1"
+version = "0.2.2"
 description = "A fast CODEOWNERS file validator with Python bindings"
 readme = "README.md"
 license = { text = "MIT" }

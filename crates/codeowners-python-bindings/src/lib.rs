@@ -53,14 +53,17 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
     Ok(dict.into())
 }
 
-/// Validate a CODEOWNERS file content.
+/// Validate a CODEOWNERS file in a repository.
 ///
-/// This function runs validation checks on a CODEOWNERS file. When a `github_client`
-/// is provided, it also verifies that owners exist on GitHub.
+/// This function runs validation checks on a CODEOWNERS file. It automatically
+/// finds the CODEOWNERS file in the repository by searching in standard locations:
+/// `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`.
+///
+/// When a `github_client` is provided, it also verifies that owners exist on GitHub.
 ///
 /// Args:
-///     content: The CODEOWNERS file content as a string.
-///     repo_path: Path to the repository root directory.
+///     repo_path: Path to the repository root directory. The CODEOWNERS file will
+///         be automatically located within this directory.
 ///     config: Optional configuration dictionary with keys:
 ///         - ignored_owners: List of owners to ignore during validation
 ///         - owners_must_be_teams: Whether owners must be teams (bool)
@@ -83,10 +86,14 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///     A dictionary with check results grouped by check name, where each entry contains:
 ///     - List of issues, each with: line, column, message, severity
 ///
+/// Raises:
+///     FileNotFoundError: If no CODEOWNERS file is found in the repository.
+///     IOError: If the CODEOWNERS file cannot be read.
+///
 /// Example:
 ///     >>> import asyncio
 ///     >>> # Without GitHub client (sync checks only)
-///     >>> result = asyncio.run(validate_codeowners("*.rs @rustacean\\n", "/path/to/repo"))
+///     >>> result = asyncio.run(validate_codeowners("/path/to/repo"))
 ///     >>> result["syntax"]
 ///     []  # No syntax errors
 ///     >>>
@@ -97,22 +104,19 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///     ...     async def team_exists(self, org: str, team: str) -> str:
 ///     ...         return "exists"  # Implement with actual GitHub API call
 ///     >>> result = asyncio.run(validate_codeowners(
-///     ...     "*.rs @rustacean\\n",
 ///     ...     "/path/to/repo",
 ///     ...     github_client=MyGithubClient()
 ///     ... ))
 #[pyfunction]
-#[pyo3(signature = (content, repo_path, config=None, checks=None, github_client=None))]
+#[pyo3(signature = (repo_path, config=None, checks=None, github_client=None))]
 fn validate_codeowners<'py>(
     py: Python<'py>,
-    content: &str,
     repo_path: &str,
     config: Option<&Bound<'py, PyDict>>,
     checks: Option<Vec<String>>,
     github_client: Option<Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyAny>> {
     // Create the async coroutine
-    let content = content.to_string();
     let repo_path = repo_path.to_string();
     let github_client = github_client.map(|c| c.unbind());
     let config_dict: Option<HashMap<String, Py<PyAny>>> = config.map(|c| {
@@ -122,19 +126,11 @@ fn validate_codeowners<'py>(
     });
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        validate_codeowners_impl(
-            &content,
-            &repo_path,
-            config_dict.as_ref(),
-            checks,
-            github_client,
-        )
-        .await
+        validate_codeowners_impl(&repo_path, config_dict.as_ref(), checks, github_client).await
     })
 }
 
 async fn validate_codeowners_impl(
-    content: &str,
     repo_path: &str,
     config: Option<&HashMap<String, Py<PyAny>>>,
     checks: Option<Vec<String>>,
@@ -142,8 +138,28 @@ async fn validate_codeowners_impl(
 ) -> PyResult<Py<PyDict>> {
     use codeowners_validator_core::validate::checks::{CheckRunner, OwnersCheck};
 
-    // Parse the content first
-    let parse_result = codeowners_validator_core::parse::parse_codeowners(content);
+    let repo_path_buf = std::path::Path::new(repo_path);
+
+    // Find the CODEOWNERS file
+    let codeowners_path =
+        codeowners_validator_core::find_codeowners_file(repo_path_buf).ok_or_else(|| {
+            pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+            "CODEOWNERS file not found in repository '{}'. Searched in: .github/CODEOWNERS, CODEOWNERS, docs/CODEOWNERS",
+            repo_path
+        ))
+        })?;
+
+    // Read the CODEOWNERS file
+    let content = std::fs::read_to_string(&codeowners_path).map_err(|e| {
+        pyo3::exceptions::PyIOError::new_err(format!(
+            "Failed to read CODEOWNERS file '{}': {}",
+            codeowners_path.display(),
+            e
+        ))
+    })?;
+
+    // Parse the content
+    let parse_result = codeowners_validator_core::parse::parse_codeowners(&content);
 
     // Build check config from Python dict
     let check_config = Python::attach(|py| match config {
@@ -194,8 +210,6 @@ async fn validate_codeowners_impl(
         default
     });
 
-    let repo_path = std::path::Path::new(repo_path);
-
     // Build CheckRunner with requested checks
     use codeowners_validator_core::validate::checks::{
         AvoidShadowingCheck, DupPatternsCheck, FilesCheck, NotOwnedCheck, SyntaxCheck,
@@ -229,7 +243,7 @@ async fn validate_codeowners_impl(
         runner
             .run_all(
                 &parse_result.ast,
-                repo_path,
+                repo_path_buf,
                 &check_config,
                 Some(
                     &py_client
@@ -239,7 +253,7 @@ async fn validate_codeowners_impl(
             .await
     } else {
         runner
-            .run_all(&parse_result.ast, repo_path, &check_config, None)
+            .run_all(&parse_result.ast, repo_path_buf, &check_config, None)
             .await
     };
 

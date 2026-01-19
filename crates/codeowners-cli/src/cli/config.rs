@@ -147,22 +147,12 @@ impl ValidatedConfig {
 /// 2. `CODEOWNERS`
 /// 3. `docs/CODEOWNERS`
 pub fn find_codeowners_file(repo_path: &Path) -> Result<std::path::PathBuf, ConfigError> {
-    let locations = [
-        repo_path.join(".github/CODEOWNERS"),
-        repo_path.join("CODEOWNERS"),
-        repo_path.join("docs/CODEOWNERS"),
-    ];
-
-    for path in &locations {
-        if path.exists() {
-            return Ok(path.clone());
-        }
-    }
-
-    Err(ConfigError::ReadCodeowners(format!(
-        "CODEOWNERS file not found in repository '{}'. Searched in: .github/CODEOWNERS, CODEOWNERS, docs/CODEOWNERS",
-        repo_path.display()
-    )))
+    codeowners_validator_core::find_codeowners_file(repo_path).ok_or_else(|| {
+        ConfigError::ReadCodeowners(format!(
+            "CODEOWNERS file not found in repository '{}'. Searched in: .github/CODEOWNERS, CODEOWNERS, docs/CODEOWNERS",
+            repo_path.display()
+        ))
+    })
 }
 
 /// Creates an authenticated Octocrab client from CLI arguments.
