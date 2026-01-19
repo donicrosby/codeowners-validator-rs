@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "codeowners-validator"
-version = "0.2.0"
+version = "0.2.1"
 description = "A fast CODEOWNERS file validator with Python bindings"
 readme = "README.md"
 license = { text = "MIT" }
@@ -27,10 +27,6 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = ["codeowners", "github", "validation", "linter"]
-
-[project.optional-dependencies]
-githubkit = ["githubkit>=0.11"]
-pygithub = ["PyGithub>=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/donicrosby/codeowners-validator-rs"
@@ -62,13 +58,13 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

@@ -12,16 +12,43 @@ A fast CODEOWNERS file validator with Python bindings, powered by Rust.
 
 ## Installation
 
+This package requires [maturin](https://github.com/PyO3/maturin) to build from source.
+
+### Using uv (Recommended)
+
 ```bash
-# Using uv (recommended)
-uv add codeowners-validator
+# Install directly from git
+uv add "codeowners-validator @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
 
-# Using pip
-pip install codeowners-validator
+# With optional GitHub client dependencies
+uv add "codeowners-validator[githubkit] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
 
-# With GitHub client support
-uv add codeowners-validator[githubkit]   # for githubkit
-uv add codeowners-validator[pygithub]    # for PyGithub
+# Or with PyGithub
+uv add "codeowners-validator[pygithub] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+```
+
+### Using pip
+
+```bash
+# Install directly from git
+pip install "codeowners-validator @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+
+# With optional GitHub client dependencies
+pip install "codeowners-validator[githubkit] @ git+https://github.com/donicrosby/codeowners-validator-rs#subdirectory=crates/codeowners-python-bindings"
+```
+
+### From Local Clone
+
+```bash
+git clone https://github.com/donicrosby/codeowners-validator-rs.git
+cd codeowners-validator-rs/crates/codeowners-python-bindings
+
+# Using uv
+uv add -e .
+
+# Or using pip with maturin
+pip install maturin
+maturin develop
 ```
 
 ## Quick Start
@@ -221,6 +248,100 @@ Validates CODEOWNERS content with GitHub owner verification.
 - `checks`: Optional list of checks to run
 
 **Returns:** Dictionary with issues grouped by check name, including `owners` check results.
+
+## Type Annotations
+
+This package exports type definitions for excellent IDE support and type checking. All types are available for import:
+
+```python
+from codeowners_validator import (
+    # Protocol for implementing GitHub clients
+    GithubClientProtocol,
+    # Configuration and result types
+    CheckConfigDict,
+    ParseResultDict,
+    ValidationResultDict,
+    IssueDict,
+    # AST types
+    AstDict,
+    LineDict,
+    LineKindDict,
+    OwnerDict,
+    PatternDict,
+    SpanDict,
+)
+```
+
+### `GithubClientProtocol`
+
+Protocol class for implementing custom GitHub clients. Implement this protocol to enable owner verification:
+
+```python
+from typing import Literal
+from codeowners_validator import GithubClientProtocol, validate_codeowners
+
+class MyGithubClient(GithubClientProtocol):
+    """Custom GitHub client implementing the protocol."""
+    
+    def __init__(self, token: str):
+        self.token = token
+    
+    async def user_exists(self, username: str) -> bool:
+        """Check if a GitHub user exists.
+        
+        Args:
+            username: GitHub username (without leading '@')
+        
+        Returns:
+            True if user exists, False otherwise
+        """
+        # Your implementation here
+        ...
+    
+    async def team_exists(
+        self, org: str, team: str
+    ) -> Literal["exists", "not_found", "unauthorized"]:
+        """Check if a GitHub team exists.
+        
+        Args:
+            org: Organization name
+            team: Team slug
+        
+        Returns:
+            "exists" if team exists,
+            "not_found" if team doesn't exist,
+            "unauthorized" if insufficient permissions
+        """
+        # Your implementation here
+        ...
+
+# Usage with type annotations
+async def validate_with_types() -> None:
+    client = MyGithubClient("ghp_token")
+    result = await validate_codeowners(
+        "*.rs @rustacean\n",
+        "/path/to/repo",
+        github_client=client
+    )
+    for issue in result["owners"]:
+        print(issue["message"])
+```
+
+### Type Definitions
+
+| Type | Description |
+|------|-------------|
+| `GithubClientProtocol` | Protocol for GitHub client implementations |
+| `CheckConfigDict` | Configuration options (`ignored_owners`, `owners_must_be_teams`, etc.) |
+| `ParseResultDict` | Return type of `parse_codeowners()` |
+| `ValidationResultDict` | Return type of `validate_codeowners()` |
+| `IssueDict` | Validation issue with `line`, `column`, `message`, `severity` |
+| `SpanDict` | Source location with `offset`, `line`, `column`, `length` |
+| `AstDict` | Parsed AST containing `lines` |
+| `LineDict` | Single line with `kind` and `span` |
+| `LineKindDict` | Line content: `blank`, `comment`, `rule`, or `invalid` |
+| `OwnerDict` | Owner entry: `user`, `team`, or `email` type |
+| `PatternDict` | File pattern with `text` and `span` |
 
 ## Development
 
