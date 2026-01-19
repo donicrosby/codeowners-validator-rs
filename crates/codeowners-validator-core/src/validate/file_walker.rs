@@ -8,8 +8,7 @@ use log::{debug, trace};
 use std::path::Path;
 
 /// Configuration for file walking behavior.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct FileWalkerConfig {
     /// Whether to include hidden files and directories (starting with `.`).
     /// Default: false
@@ -21,7 +20,6 @@ pub struct FileWalkerConfig {
     /// Default: false (files only)
     pub include_directories: bool,
 }
-
 
 impl FileWalkerConfig {
     /// Creates a new config with default settings.
@@ -100,8 +98,8 @@ pub fn list_files(repo_path: &Path, config: &FileWalkerConfig) -> Vec<String> {
         let is_file = entry.file_type().is_some_and(|ft| ft.is_file());
         let is_dir = entry.file_type().is_some_and(|ft| ft.is_dir());
 
-        // Skip based on config
-        if !is_file && !(config.include_directories && is_dir) {
+        // Skip based on config: include files, or dirs if configured
+        if !(is_file || (config.include_directories && is_dir)) {
             continue;
         }
 

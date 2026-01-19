@@ -199,14 +199,12 @@ impl AsyncCheck for OwnersCheck {
         let validation_results = join_all(futures).await;
 
         // Collect errors
-        for maybe_error in validation_results {
-            if let Some(error) = maybe_error {
-                // Check if it's a rate limit error and log a warning
-                if matches!(&error, ValidationError::InsufficientAuthorization { .. }) {
-                    warn!("GitHub API authorization issue encountered");
-                }
-                result.add_error(error);
+        for error in validation_results.into_iter().flatten() {
+            // Check if it's a rate limit error and log a warning
+            if matches!(&error, ValidationError::InsufficientAuthorization { .. }) {
+                warn!("GitHub API authorization issue encountered");
             }
+            result.add_error(error);
         }
 
         debug!(
