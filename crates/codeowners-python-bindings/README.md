@@ -335,7 +335,7 @@ async def validate_with_types() -> None:
 | `CheckConfigDict` | Configuration options (`ignored_owners`, `owners_must_be_teams`, etc.) |
 | `ParseResultDict` | Return type of `parse_codeowners()` |
 | `ValidationResultDict` | Return type of `validate_codeowners()` |
-| `IssueDict` | Validation issue with `line`, `column`, `message`, `severity` |
+| `IssueDict` | Validation issue with `span`, `message`, `severity` |
 | `SpanDict` | Source location with `offset`, `line`, `column`, `length` |
 | `AstDict` | Parsed AST containing `lines` |
 | `LineDict` | Single line with `kind` and `span` |

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "codeowners-validator"
-version = "0.2.2"
+version = "0.3.0"
 description = "A fast CODEOWNERS file validator with Python bindings"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,6 +41,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=4.3.0",
+    "maturin-import-hook>=0.3.0",
 ]
 
 [tool.maturin]
@@ -51,6 +52,7 @@ strip = true
 
 [tool.uv]
 default-groups = ["dev"]
+cache-keys = [{file = "pyproject.toml"}, {file = "Cargo.toml"}, {file = "**/*.rs"}]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

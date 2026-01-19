@@ -67,8 +67,7 @@ class ParseResultDict(TypedDict):
 class IssueDict(TypedDict):
     """A validation issue."""
 
-    line: int | None
-    column: int | None
+    span: SpanDict | None
     message: str
     severity: Literal["error", "warning"]
 
@@ -235,7 +234,7 @@ async def validate_codeowners(
 
     Returns:
         A dictionary with check results grouped by check name, where each entry contains:
-        - List of issues, each with: line, column, message, severity
+        - List of issues, each with: span, message, severity
 
     Raises:
         FileNotFoundError: If no CODEOWNERS file is found in the repository.

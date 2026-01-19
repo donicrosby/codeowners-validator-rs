@@ -169,22 +169,15 @@ impl From<Severity> for PySeverity {
 /// Python wrapper for ValidationError (as a single issue).
 #[derive(Debug, Clone, Serialize)]
 pub struct PyIssue {
-    pub line: Option<usize>,
-    pub column: Option<usize>,
+    pub span: Option<PySpan>,
     pub message: String,
     pub severity: PySeverity,
 }
 
 impl From<&ValidationError> for PyIssue {
     fn from(error: &ValidationError) -> Self {
-        let (line, column) = error
-            .span()
-            .map(|s| (Some(s.line), Some(s.column)))
-            .unwrap_or_else(|| (error.line(), None));
-
         Self {
-            line,
-            column,
+            span: error.span().map(PySpan::from),
             message: error.to_string(),
             severity: PySeverity::from(error.severity()),
         }
