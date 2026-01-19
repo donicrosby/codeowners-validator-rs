@@ -386,9 +386,13 @@ class TestIssueFormat:
             assert "message" in issue
             assert "severity" in issue
             assert issue["severity"] in ("error", "warning")
-            # line and column can be None
-            assert "line" in issue
-            assert "column" in issue
+            # span can be None for issues without location (e.g., FileNotOwned)
+            assert "span" in issue
+            if issue["span"] is not None:
+                assert "offset" in issue["span"]
+                assert "line" in issue["span"]
+                assert "column" in issue["span"]
+                assert "length" in issue["span"]
 
 
 class TestSpanFormat:
