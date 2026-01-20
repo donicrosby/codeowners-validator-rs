@@ -70,12 +70,10 @@ impl JsonOutput {
 /// A single issue in JSON format.
 #[derive(Debug, Serialize)]
 pub struct JsonIssue {
-    /// Line number (if applicable).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub line: Option<usize>,
-    /// Column number (if applicable).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub column: Option<usize>,
+    /// Line number where the issue occurred.
+    pub line: usize,
+    /// Column number where the issue occurred.
+    pub column: usize,
     /// Human-readable message.
     pub message: String,
     /// Severity of the issue.
@@ -84,14 +82,10 @@ pub struct JsonIssue {
 
 impl From<&ValidationError> for JsonIssue {
     fn from(error: &ValidationError) -> Self {
-        let (line, column) = error
-            .span()
-            .map(|s| (Some(s.line), Some(s.column)))
-            .unwrap_or_else(|| (error.line(), None));
-
+        let span = error.span();
         Self {
-            line,
-            column,
+            line: span.line,
+            column: span.column,
             message: error.to_string(),
             severity: error.severity(),
         }
@@ -295,19 +289,20 @@ mod tests {
         let error = ValidationError::duplicate_pattern("*.rs", test_span(), 1);
         let issue = JsonIssue::from(&error);
 
-        assert_eq!(issue.line, Some(1));
-        assert_eq!(issue.column, Some(1));
+        assert_eq!(issue.line, 1);
+        assert_eq!(issue.column, 1);
         assert!(issue.message.contains("duplicate"));
         assert_eq!(issue.severity, Severity::Warning);
     }
 
     #[test]
-    fn test_json_issue_from_error_without_span() {
-        let error = ValidationError::file_not_owned("src/main.rs");
+    fn test_json_issue_from_file_not_owned() {
+        let eof_span = Span::point(50, 3, 1); // EOF at line 3
+        let error = ValidationError::file_not_owned("src/main.rs", eof_span);
         let issue = JsonIssue::from(&error);
 
-        assert_eq!(issue.line, None);
-        assert_eq!(issue.column, None);
+        assert_eq!(issue.line, 3);
+        assert_eq!(issue.column, 1);
         assert!(issue.message.contains("src/main.rs"));
         assert_eq!(issue.severity, Severity::Warning);
     }
