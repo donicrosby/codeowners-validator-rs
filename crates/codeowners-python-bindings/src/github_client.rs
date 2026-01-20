@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use codeowners_validator_core::validate::github_client::{
     GithubClient, GithubClientError, TeamExistsResult, UserExistsResult,
 };
+use log::debug;
 use pyo3::prelude::*;
 
 /// Helper function to convert PyErr to GithubClientError.
@@ -23,6 +24,7 @@ pub struct PyGithubClient {
 impl PyGithubClient {
     /// Creates a new PyGithubClient wrapping a Python object.
     pub fn new(client: Py<PyAny>) -> Self {
+        debug!("Creating new PyGithubClient wrapper");
         Self { client }
     }
 
@@ -33,6 +35,10 @@ impl PyGithubClient {
         method_name: &str,
         args: Vec<String>,
     ) -> Result<Py<PyAny>, GithubClientError> {
+        debug!(
+            "Calling Python method '{}' with args: {:?}",
+            method_name, args
+        );
         let client = Python::attach(|py| self.client.clone_ref(py));
         let method_name = method_name.to_string();
 
@@ -69,11 +75,13 @@ impl PyGithubClient {
 
                     if is_coroutine {
                         // Convert the coroutine to a future inside the GIL
+                        debug!("Python method returned a coroutine, awaiting...");
                         let future = pyo3_async_runtimes::tokio::into_future(result)
                             .map_err(py_err_to_github_err)?;
                         Ok((Some(Box::pin(future)), None))
                     } else {
                         // It's a regular value, return it directly
+                        debug!("Python method returned sync result");
                         Ok((None, Some(result.unbind())))
                     }
                 },
@@ -92,12 +100,14 @@ impl PyGithubClient {
 #[async_trait]
 impl GithubClient for PyGithubClient {
     async fn user_exists(&self, username: &str) -> Result<UserExistsResult, GithubClientError> {
+        debug!("Checking if user exists: {}", username);
+
         let result = self
             .call_python_method_async("user_exists", vec![username.to_string()])
             .await?;
 
         // Parse the result
-        Python::attach(|py| {
+        let parsed = Python::attach(|py| {
             let result = result.bind(py);
 
             if let Ok(exists) = result.extract::<bool>() {
@@ -121,7 +131,10 @@ impl GithubClient for PyGithubClient {
                     "user_exists returned an unexpected type".to_string(),
                 ))
             }
-        })
+        });
+
+        debug!("User '{}' check result: {:?}", username, parsed);
+        parsed
     }
 
     async fn team_exists(
@@ -129,12 +142,14 @@ impl GithubClient for PyGithubClient {
         org: &str,
         team: &str,
     ) -> Result<TeamExistsResult, GithubClientError> {
+        debug!("Checking if team exists: {}/{}", org, team);
+
         let result = self
             .call_python_method_async("team_exists", vec![org.to_string(), team.to_string()])
             .await?;
 
         // Parse the result - team_exists returns a string status
-        Python::attach(|py| {
+        let parsed = Python::attach(|py| {
             let result = result.bind(py);
 
             if let Ok(status) = result.extract::<String>() {
@@ -159,7 +174,10 @@ impl GithubClient for PyGithubClient {
                     "team_exists returned an unexpected type".to_string(),
                 ))
             }
-        })
+        });
+
+        debug!("Team '{}/{}' check result: {:?}", org, team, parsed);
+        parsed
     }
 }
 
