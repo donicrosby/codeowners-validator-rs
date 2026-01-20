@@ -5,6 +5,7 @@
 
 use super::span::Span;
 use std::borrow::Cow;
+use std::fmt::{self, Display};
 
 /// Represents a pattern in a CODEOWNERS rule.
 ///
@@ -24,6 +25,12 @@ impl Pattern {
             text: text.into(),
             span,
         }
+    }
+}
+
+impl Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
     }
 }
 
@@ -102,6 +109,16 @@ impl Owner {
             Owner::User { name, .. } => Cow::Owned(format!("@{}", name)),
             Owner::Team { org, team, .. } => Cow::Owned(format!("@{}/{}", org, team)),
             Owner::Email { email, .. } => Cow::Borrowed(email),
+        }
+    }
+}
+
+impl Display for Owner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Owner::User { name, .. } => write!(f, "@{}", name),
+            Owner::Team { org, team, .. } => write!(f, "@{}/{}", org, team),
+            Owner::Email { email, .. } => f.write_str(email),
         }
     }
 }
@@ -199,6 +216,23 @@ impl Line {
     }
 }
 
+impl Display for Line {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.kind {
+            LineKind::Blank => Ok(()),
+            LineKind::Comment { content } => write!(f, "#{}", content),
+            LineKind::Rule { pattern, owners } => {
+                write!(f, "{}", pattern)?;
+                for owner in owners {
+                    write!(f, " {}", owner)?;
+                }
+                Ok(())
+            }
+            LineKind::Invalid { raw, .. } => f.write_str(raw),
+        }
+    }
+}
+
 /// The complete AST for a CODEOWNERS file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeownersFile {
@@ -242,6 +276,24 @@ impl CodeownersFile {
 impl Default for CodeownersFile {
     fn default() -> Self {
         Self::new(Vec::new())
+    }
+}
+
+impl Display for CodeownersFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for line in &self.lines {
+            if !first {
+                writeln!(f)?;
+            }
+            first = false;
+            write!(f, "{}", line)?;
+        }
+        // Trailing newline for POSIX compatibility
+        if !self.lines.is_empty() {
+            writeln!(f)?;
+        }
+        Ok(())
     }
 }
 
@@ -386,5 +438,80 @@ mod tests {
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].0.text, "/src/");
         assert_eq!(rules[0].1.len(), 2);
+    }
+
+    // Display trait tests
+    #[test]
+    fn pattern_display() {
+        let pattern = Pattern::new("*.rs", test_span());
+        assert_eq!(pattern.to_string(), "*.rs");
+    }
+
+    #[test]
+    fn owner_display_user() {
+        let owner = Owner::user("octocat", test_span());
+        assert_eq!(owner.to_string(), "@octocat");
+    }
+
+    #[test]
+    fn owner_display_team() {
+        let owner = Owner::team("github", "core", test_span());
+        assert_eq!(owner.to_string(), "@github/core");
+    }
+
+    #[test]
+    fn owner_display_email() {
+        let owner = Owner::email("dev@example.com", test_span());
+        assert_eq!(owner.to_string(), "dev@example.com");
+    }
+
+    #[test]
+    fn line_display_blank() {
+        let line = Line::blank(test_span());
+        assert_eq!(line.to_string(), "");
+    }
+
+    #[test]
+    fn line_display_comment() {
+        let line = Line::comment(" This is a comment", test_span());
+        assert_eq!(line.to_string(), "# This is a comment");
+    }
+
+    #[test]
+    fn line_display_rule() {
+        let pattern = Pattern::new("*.rs", test_span());
+        let owners = vec![
+            Owner::user("alice", test_span()),
+            Owner::team("org", "team", test_span()),
+        ];
+        let line = Line::rule(pattern, owners, test_span());
+        assert_eq!(line.to_string(), "*.rs @alice @org/team");
+    }
+
+    #[test]
+    fn line_display_invalid() {
+        let line = Line::invalid("bad line", "error", test_span());
+        assert_eq!(line.to_string(), "bad line");
+    }
+
+    #[test]
+    fn codeowners_file_display() {
+        let lines = vec![
+            Line::comment(" CODEOWNERS", test_span()),
+            Line::blank(test_span()),
+            Line::rule(
+                Pattern::new("*.rs", test_span()),
+                vec![Owner::user("rustacean", test_span())],
+                test_span(),
+            ),
+        ];
+        let file = CodeownersFile::new(lines);
+        assert_eq!(file.to_string(), "# CODEOWNERS\n\n*.rs @rustacean\n");
+    }
+
+    #[test]
+    fn codeowners_file_display_empty() {
+        let file = CodeownersFile::new(vec![]);
+        assert_eq!(file.to_string(), "");
     }
 }

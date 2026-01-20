@@ -3,13 +3,22 @@ default_install_hook_types:
   - commit-msg
 
 repos:
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: Cargo Clippy
+        language: system
+        types_or: [ rust ]
+        entry: cargo clippy
+        args: [ --all-targets, --all-features, --, -D, warnings ]
+        pass_filenames: false
+        stages: [pre-commit]
   - repo: https://github.com/kykosic/pre-commit-rust.git
     rev: 0.4.0
     hooks:
       - id: cargo-fmt
         stages: [pre-commit]
-      - id: cargo-clippy
-        stages: [pre-commit]
+        types_or: [ rust ]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.

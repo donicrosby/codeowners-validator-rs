@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Python bindings for the CODEOWNERS validator"
 
+[features]
+default = ["generate"]  # Python bindings include generator by default for benchmarking
+generate = ["codeowners-validator-core/generate"]
+
 [lib]
 name = "codeowners_validator"
 crate-type = ["cdylib"]

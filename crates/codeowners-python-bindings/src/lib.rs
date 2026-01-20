@@ -329,6 +329,35 @@ async fn validate_codeowners_impl(
     })
 }
 
+/// Generate a random CODEOWNERS file for benchmarking.
+///
+/// Args:
+///     num_rules: Number of rule lines (default: 100)
+///     num_comments: Number of comment lines (default: 20)
+///     seed: Random seed for deterministic generation (default: 42)
+///
+/// Returns:
+///     A valid CODEOWNERS file content as a string.
+///
+/// Example:
+///     >>> content = generate_codeowners_fixture(num_rules=1000)
+///     >>> len(content)  # Approximately 50KB
+///     52341
+#[cfg(feature = "generate")]
+#[pyfunction]
+#[pyo3(signature = (num_rules=100, num_comments=20, seed=42))]
+fn generate_codeowners_fixture(num_rules: usize, num_comments: usize, seed: u64) -> String {
+    use codeowners_validator_core::generate::{GeneratorConfig, generate};
+
+    let config = GeneratorConfig {
+        num_rules,
+        num_comments,
+        seed,
+        ..GeneratorConfig::default()
+    };
+    generate(&config)
+}
+
 /// The Python module for codeowners_validator.
 #[pymodule]
 fn _codeowners_validator(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -338,6 +367,9 @@ fn _codeowners_validator(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(parse_codeowners, m)?)?;
     m.add_function(wrap_pyfunction!(validate_codeowners, m)?)?;
+
+    #[cfg(feature = "generate")]
+    m.add_function(wrap_pyfunction!(generate_codeowners_fixture, m)?)?;
 
     // Add version info
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

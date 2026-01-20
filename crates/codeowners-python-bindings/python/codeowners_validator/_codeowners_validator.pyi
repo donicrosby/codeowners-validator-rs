@@ -259,3 +259,25 @@ async def validate_codeowners(
         ... ))
     """
     ...
+
+def generate_codeowners_fixture(
+    num_rules: int = 100,
+    num_comments: int = 20,
+    seed: int = 42,
+) -> str:
+    """Generate a random CODEOWNERS file for benchmarking.
+
+    Args:
+        num_rules: Number of rule lines (default: 100)
+        num_comments: Number of comment lines (default: 20)
+        seed: Random seed for deterministic generation (default: 42)
+
+    Returns:
+        A valid CODEOWNERS file content as a string.
+
+    Example:
+        >>> content = generate_codeowners_fixture(num_rules=1000)
+        >>> len(content)  # Approximately 50KB
+        52341
+    """
+    ...

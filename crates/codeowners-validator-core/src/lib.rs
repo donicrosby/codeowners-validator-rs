@@ -59,6 +59,12 @@ pub mod matching;
 pub mod parse;
 pub mod validate;
 
+#[cfg(feature = "generate")]
+pub mod generate;
+
+#[cfg(feature = "generate")]
+pub use generate::{GeneratorConfig, generate, generate_ast};
+
 // Re-export commonly used types at the crate root
 pub use parse::{CodeownersFile, ParseResult, parse_codeowners};
 pub use validate::checks::{
