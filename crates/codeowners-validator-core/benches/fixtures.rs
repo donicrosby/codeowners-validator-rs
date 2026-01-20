@@ -123,6 +123,13 @@ impl BenchmarkRepo {
     }
 }
 
+impl Default for BenchmarkRepo {
+    /// Default implementation for BenchmarkRepo.
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Lazily created benchmark repository for file-dependent checks.
 ///
 /// This is created once and reused across all benchmarks.
