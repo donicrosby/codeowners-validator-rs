@@ -394,6 +394,29 @@ class TestIssueFormat:
                 assert "column" in issue["span"]
                 assert "length" in issue["span"]
 
+    @pytest.mark.asyncio
+    async def test_issue_has_path_field(self, temp_repo: str) -> None:
+        """Test that issues include the path to the CODEOWNERS file."""
+        from codeowners_validator import validate_codeowners
+
+        # Create duplicate patterns to generate an issue
+        write_codeowners(
+            temp_repo,
+            """*.rs @user1
+*.rs @user2
+""",
+        )
+        result = await validate_codeowners(temp_repo)
+
+        # Should have duplicate pattern issues
+        assert len(result["duppatterns"]) > 0
+
+        for issue in result["duppatterns"]:
+            # All issues should have a path field
+            assert "path" in issue
+            # Path should be the relative path to the CODEOWNERS file
+            assert issue["path"] == ".github/CODEOWNERS"
+
 
 class TestSpanFormat:
     """Tests for the format of span information."""

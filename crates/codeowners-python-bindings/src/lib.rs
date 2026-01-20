@@ -366,18 +366,39 @@ async fn validate_codeowners_impl(
             shadowing_errors.len()
         );
 
-        // Convert each group to Python
-        let convert_errors =
-            |errors: Vec<&ValidationError>, py: Python<'_>| -> PyResult<Vec<Py<PyAny>>> {
-                errors.iter().map(|e| PyIssue::from(*e).to_py(py)).collect()
-            };
+        // Calculate the relative path of the CODEOWNERS file to the repo root
+        let relative_path = codeowners_path
+            .strip_prefix(repo_path_buf)
+            .unwrap_or(&codeowners_path)
+            .to_string_lossy()
+            .to_string();
 
-        result_dict.set_item("syntax", convert_errors(syntax_errors, py)?)?;
-        result_dict.set_item("files", convert_errors(files_errors, py)?)?;
-        result_dict.set_item("duppatterns", convert_errors(duppatterns_errors, py)?)?;
-        result_dict.set_item("owners", convert_errors(owners_errors, py)?)?;
-        result_dict.set_item("notowned", convert_errors(notowned_errors, py)?)?;
-        result_dict.set_item("avoid-shadowing", convert_errors(shadowing_errors, py)?)?;
+        // Convert each group to Python
+        let convert_errors = |errors: Vec<&ValidationError>,
+                              py: Python<'_>,
+                              path: &str|
+         -> PyResult<Vec<Py<PyAny>>> {
+            errors
+                .iter()
+                .map(|e| PyIssue::new(e, path.to_string()).to_py(py))
+                .collect()
+        };
+
+        result_dict.set_item("syntax", convert_errors(syntax_errors, py, &relative_path)?)?;
+        result_dict.set_item("files", convert_errors(files_errors, py, &relative_path)?)?;
+        result_dict.set_item(
+            "duppatterns",
+            convert_errors(duppatterns_errors, py, &relative_path)?,
+        )?;
+        result_dict.set_item("owners", convert_errors(owners_errors, py, &relative_path)?)?;
+        result_dict.set_item(
+            "notowned",
+            convert_errors(notowned_errors, py, &relative_path)?,
+        )?;
+        result_dict.set_item(
+            "avoid-shadowing",
+            convert_errors(shadowing_errors, py, &relative_path)?,
+        )?;
 
         Ok(result_dict.into())
     })
