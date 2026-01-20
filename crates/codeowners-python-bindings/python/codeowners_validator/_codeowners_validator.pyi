@@ -67,6 +67,7 @@ class ParseResultDict(TypedDict):
 class IssueDict(TypedDict):
     """A validation issue."""
 
+    path: str
     span: SpanDict | None
     message: str
     severity: Literal["error", "warning"]

@@ -169,14 +169,17 @@ impl From<Severity> for PySeverity {
 /// Python wrapper for ValidationError (as a single issue).
 #[derive(Debug, Clone, Serialize)]
 pub struct PyIssue {
+    pub path: String,
     pub span: Option<PySpan>,
     pub message: String,
     pub severity: PySeverity,
 }
 
-impl From<&ValidationError> for PyIssue {
-    fn from(error: &ValidationError) -> Self {
+impl PyIssue {
+    /// Creates a new PyIssue from a ValidationError and a path.
+    pub fn new(error: &ValidationError, path: String) -> Self {
         Self {
+            path,
             span: error.span().map(PySpan::from),
             message: error.to_string(),
             severity: PySeverity::from(error.severity()),
