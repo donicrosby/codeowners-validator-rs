@@ -41,12 +41,23 @@ Example with type annotations:
     ...         return "exists"
 """
 
-from typing import TYPE_CHECKING
-
 from codeowners_validator._codeowners_validator import (
     __version__,
     parse_codeowners,
     validate_codeowners,
+)
+from codeowners_validator._types import (
+    AstDict,
+    CheckConfigDict,
+    GithubClientProtocol,
+    IssueDict,
+    LineDict,
+    LineKindDict,
+    OwnerDict,
+    ParseResultDict,
+    PatternDict,
+    SpanDict,
+    ValidationResultDict,
 )
 
 # The generate function is available when built with the 'generate' feature (default)
@@ -55,21 +66,6 @@ try:
 except ImportError:
     generate_codeowners_fixture = None  # type: ignore[assignment,misc]
 
-if TYPE_CHECKING:
-    from codeowners_validator._codeowners_validator import (
-        AstDict,
-        CheckConfigDict,
-        GithubClientProtocol,
-        IssueDict,
-        LineDict,
-        LineKindDict,
-        OwnerDict,
-        ParseResultDict,
-        PatternDict,
-        SpanDict,
-        ValidationResultDict,
-    )
-
 __all__ = [
     # Version
     "__version__",
@@ -77,7 +73,7 @@ __all__ = [
     "parse_codeowners",
     "validate_codeowners",
     "generate_codeowners_fixture",
-    # Types (for type checking)
+    # Types (available at runtime)
     "AstDict",
     "CheckConfigDict",
     "GithubClientProtocol",
