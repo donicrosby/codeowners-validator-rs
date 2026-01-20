@@ -2,6 +2,7 @@
 //!
 //! This crate provides Python bindings using PyO3 for the codeowners-validator-core library.
 
+use log::{debug, info};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
@@ -31,7 +32,18 @@ use types::{PyIssue, PyLine};
 ///     2
 #[pyfunction]
 fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
+    debug!(
+        "parse_codeowners called with content length: {} bytes",
+        content.len()
+    );
+
     let result = codeowners_validator_core::parse::parse_codeowners(content);
+
+    debug!(
+        "Parsing complete: {} lines parsed, {} errors",
+        result.ast.lines.len(),
+        result.errors.len()
+    );
 
     let dict = PyDict::new(py);
     dict.set_item("is_ok", result.is_ok())?;
@@ -116,6 +128,14 @@ fn validate_codeowners<'py>(
     checks: Option<Vec<String>>,
     github_client: Option<Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyAny>> {
+    info!("validate_codeowners called for repo: {}", repo_path);
+    debug!(
+        "Configuration provided: {}, checks: {:?}, github_client: {}",
+        config.is_some(),
+        checks,
+        github_client.is_some()
+    );
+
     // Create the async coroutine
     let repo_path = repo_path.to_string();
     let github_client = github_client.map(|c| c.unbind());
@@ -138,9 +158,12 @@ async fn validate_codeowners_impl(
 ) -> PyResult<Py<PyDict>> {
     use codeowners_validator_core::validate::checks::{CheckRunner, OwnersCheck};
 
+    debug!("validate_codeowners_impl starting for: {}", repo_path);
+
     let repo_path_buf = std::path::Path::new(repo_path);
 
     // Find the CODEOWNERS file
+    debug!("Searching for CODEOWNERS file in: {}", repo_path);
     let codeowners_path =
         codeowners_validator_core::find_codeowners_file(repo_path_buf).ok_or_else(|| {
             pyo3::exceptions::PyFileNotFoundError::new_err(format!(
@@ -148,6 +171,8 @@ async fn validate_codeowners_impl(
             repo_path
         ))
         })?;
+
+    info!("Found CODEOWNERS file at: {}", codeowners_path.display());
 
     // Read the CODEOWNERS file
     let content = std::fs::read_to_string(&codeowners_path).map_err(|e| {
@@ -158,8 +183,17 @@ async fn validate_codeowners_impl(
         ))
     })?;
 
+    debug!("Read CODEOWNERS file: {} bytes", content.len());
+
     // Parse the content
+    debug!("Parsing CODEOWNERS content");
     let parse_result = codeowners_validator_core::parse::parse_codeowners(&content);
+
+    debug!(
+        "Parsing complete: {} lines, {} parse errors",
+        parse_result.ast.lines.len(),
+        parse_result.errors.len()
+    );
 
     // Build check config from Python dict
     let check_config = Python::attach(|py| match config {
@@ -210,6 +244,8 @@ async fn validate_codeowners_impl(
         default
     });
 
+    info!("Running checks: {:?}", checks_to_run);
+
     // Build CheckRunner with requested checks
     use codeowners_validator_core::validate::checks::{
         AvoidShadowingCheck, DupPatternsCheck, FilesCheck, NotOwnedCheck, SyntaxCheck,
@@ -237,7 +273,10 @@ async fn validate_codeowners_impl(
     }
 
     // Run all checks using CheckRunner
+    debug!("Starting check execution (owners check: {})", run_owners);
+
     let validation_result = if run_owners {
+        debug!("Using GitHub client for owner verification");
         let py_client =
             Python::attach(|py| PyGithubClient::new(github_client.as_ref().unwrap().clone_ref(py)));
         runner
@@ -256,6 +295,11 @@ async fn validate_codeowners_impl(
             .run_all(&parse_result.ast, repo_path_buf, &check_config, None)
             .await
     };
+
+    info!(
+        "Validation complete: {} total issues found",
+        validation_result.errors.len()
+    );
 
     // Convert results to Python dict
     // Group errors by check name based on the error type
@@ -311,6 +355,16 @@ async fn validate_codeowners_impl(
                 }
             }
         }
+
+        debug!(
+            "Issues by category - syntax: {}, files: {}, duppatterns: {}, owners: {}, notowned: {}, shadowing: {}",
+            syntax_errors.len(),
+            files_errors.len(),
+            duppatterns_errors.len(),
+            owners_errors.len(),
+            notowned_errors.len(),
+            shadowing_errors.len()
+        );
 
         // Convert each group to Python
         let convert_errors =
