@@ -5,7 +5,7 @@
 
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
-use crate::parse::LineKind;
+use crate::parse::{CodeownersFile, LineKind, Span};
 use crate::validate::file_walker::{FileWalkerConfig, list_files};
 use crate::validate::{ValidationError, ValidationResult};
 
@@ -30,6 +30,24 @@ impl NotOwnedCheck {
     /// Checks if a file matches any skip pattern.
     fn should_skip_file(file: &str, skip_patterns: &[Pattern]) -> bool {
         skip_patterns.iter().any(|pattern| pattern.matches(file))
+    }
+
+    /// Computes a zero-length span at the end of the CODEOWNERS file.
+    ///
+    /// This is used to indicate where a missing rule should be added.
+    fn eof_span(file: &CodeownersFile) -> Span {
+        if let Some(last_line) = file.lines.last() {
+            // Create a point span at the end of the last line
+            let last_span = &last_line.span;
+            Span::point(
+                last_span.offset + last_span.length,
+                last_span.line,
+                last_span.column + last_span.length,
+            )
+        } else {
+            // Empty file: position 0, line 1, column 1
+            Span::default()
+        }
     }
 }
 
@@ -62,6 +80,9 @@ impl Check for NotOwnedCheck {
         // List all files (includes hidden, respects gitignore)
         let files = list_files(ctx.repo_path, &FileWalkerConfig::for_not_owned_check());
 
+        // Compute EOF span once for all file-not-owned errors
+        let eof_span = Self::eof_span(ctx.file);
+
         // Check each file
         for file in files {
             // Skip files matching skip patterns
@@ -71,7 +92,7 @@ impl Check for NotOwnedCheck {
 
             // Check if file is covered
             if !Self::is_file_covered(&file, &patterns) {
-                result.add_error(ValidationError::file_not_owned(&file));
+                result.add_error(ValidationError::file_not_owned(&file, eof_span));
             }
         }
 
@@ -141,7 +162,7 @@ mod tests {
             .errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                ValidationError::FileNotOwned { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -253,7 +274,7 @@ mod tests {
             .errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                ValidationError::FileNotOwned { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -285,7 +306,7 @@ mod tests {
             .errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                ValidationError::FileNotOwned { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -343,7 +364,7 @@ mod tests {
             .errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                ValidationError::FileNotOwned { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -376,7 +397,7 @@ mod tests {
             .errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::FileNotOwned { path } => Some(path.as_str()),
+                ValidationError::FileNotOwned { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();

@@ -111,10 +111,14 @@ pub enum ValidationError {
     },
 
     /// File in repository has no CODEOWNERS coverage.
-    #[error("file '{path}' is not covered by any CODEOWNERS rule")]
+    #[error("line {line}: file '{path}' is not covered by any CODEOWNERS rule")]
     FileNotOwned {
+        /// The line number (1-based), pointing to EOF.
+        line: usize,
         /// The file path that isn't covered.
         path: String,
+        /// Location at the end of the CODEOWNERS file.
+        span: Span,
     },
 
     /// A pattern is shadowed by an earlier, less specific pattern.
@@ -237,8 +241,14 @@ impl ValidationError {
     }
 
     /// Creates a file not owned error.
-    pub fn file_not_owned(path: impl Into<String>) -> Self {
-        Self::FileNotOwned { path: path.into() }
+    ///
+    /// The span should point to the end of the CODEOWNERS file (EOF position).
+    pub fn file_not_owned(path: impl Into<String>, span: Span) -> Self {
+        Self::FileNotOwned {
+            line: span.line,
+            path: path.into(),
+            span,
+        }
     }
 
     /// Creates a pattern shadowed error.
@@ -266,35 +276,35 @@ impl ValidationError {
         }
     }
 
-    /// Returns the span associated with this error, if available.
-    pub fn span(&self) -> Option<&Span> {
+    /// Returns the span associated with this error.
+    pub fn span(&self) -> &Span {
         match self {
-            ValidationError::InvalidOwnerFormat { span, .. } => Some(span),
-            ValidationError::InvalidPatternSyntax { span, .. } => Some(span),
-            ValidationError::UnsupportedPatternSyntax { span, .. } => Some(span),
-            ValidationError::DuplicatePattern { span, .. } => Some(span),
-            ValidationError::PatternNotMatching { span, .. } => Some(span),
-            ValidationError::OwnerNotFound { span, .. } => Some(span),
-            ValidationError::InsufficientAuthorization { span, .. } => Some(span),
-            ValidationError::FileNotOwned { .. } => None,
-            ValidationError::PatternShadowed { span, .. } => Some(span),
-            ValidationError::OwnerMustBeTeam { span, .. } => Some(span),
+            ValidationError::InvalidOwnerFormat { span, .. }
+            | ValidationError::InvalidPatternSyntax { span, .. }
+            | ValidationError::UnsupportedPatternSyntax { span, .. }
+            | ValidationError::DuplicatePattern { span, .. }
+            | ValidationError::PatternNotMatching { span, .. }
+            | ValidationError::OwnerNotFound { span, .. }
+            | ValidationError::InsufficientAuthorization { span, .. }
+            | ValidationError::FileNotOwned { span, .. }
+            | ValidationError::PatternShadowed { span, .. }
+            | ValidationError::OwnerMustBeTeam { span, .. } => span,
         }
     }
 
-    /// Returns the line number where this error occurred, if available.
-    pub fn line(&self) -> Option<usize> {
+    /// Returns the line number where this error occurred.
+    pub fn line(&self) -> usize {
         match self {
-            ValidationError::InvalidOwnerFormat { line, .. } => Some(*line),
-            ValidationError::InvalidPatternSyntax { line, .. } => Some(*line),
-            ValidationError::UnsupportedPatternSyntax { line, .. } => Some(*line),
-            ValidationError::DuplicatePattern { line, .. } => Some(*line),
-            ValidationError::PatternNotMatching { line, .. } => Some(*line),
-            ValidationError::OwnerNotFound { line, .. } => Some(*line),
-            ValidationError::InsufficientAuthorization { line, .. } => Some(*line),
-            ValidationError::FileNotOwned { .. } => None,
-            ValidationError::PatternShadowed { line, .. } => Some(*line),
-            ValidationError::OwnerMustBeTeam { line, .. } => Some(*line),
+            ValidationError::InvalidOwnerFormat { line, .. }
+            | ValidationError::InvalidPatternSyntax { line, .. }
+            | ValidationError::UnsupportedPatternSyntax { line, .. }
+            | ValidationError::DuplicatePattern { line, .. }
+            | ValidationError::PatternNotMatching { line, .. }
+            | ValidationError::OwnerNotFound { line, .. }
+            | ValidationError::InsufficientAuthorization { line, .. }
+            | ValidationError::FileNotOwned { line, .. }
+            | ValidationError::PatternShadowed { line, .. }
+            | ValidationError::OwnerMustBeTeam { line, .. } => *line,
         }
     }
 
@@ -469,11 +479,15 @@ mod tests {
 
     #[test]
     fn validation_error_file_not_owned() {
-        let error = ValidationError::file_not_owned("src/main.rs");
-        assert!(matches!(error, ValidationError::FileNotOwned { .. }));
+        let eof_span = Span::point(100, 5, 1); // EOF at line 5
+        let error = ValidationError::file_not_owned("src/main.rs", eof_span);
+        assert!(matches!(
+            error,
+            ValidationError::FileNotOwned { line: 5, .. }
+        ));
         assert_eq!(error.severity(), Severity::Warning);
-        assert!(error.line().is_none());
-        assert!(error.span().is_none());
+        assert_eq!(error.line(), 5);
+        assert_eq!(error.span().line, 5);
     }
 
     #[test]

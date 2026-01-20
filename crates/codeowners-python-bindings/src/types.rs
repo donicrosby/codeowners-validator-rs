@@ -170,7 +170,7 @@ impl From<Severity> for PySeverity {
 #[derive(Debug, Clone, Serialize)]
 pub struct PyIssue {
     pub path: String,
-    pub span: Option<PySpan>,
+    pub span: PySpan,
     pub message: String,
     pub severity: PySeverity,
 }
@@ -180,7 +180,7 @@ impl PyIssue {
     pub fn new(error: &ValidationError, path: String) -> Self {
         Self {
             path,
-            span: error.span().map(PySpan::from),
+            span: PySpan::from(error.span()),
             message: error.to_string(),
             severity: PySeverity::from(error.severity()),
         }

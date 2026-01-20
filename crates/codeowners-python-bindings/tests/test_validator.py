@@ -386,13 +386,11 @@ class TestIssueFormat:
             assert "message" in issue
             assert "severity" in issue
             assert issue["severity"] in ("error", "warning")
-            # span can be None for issues without location (e.g., FileNotOwned)
+            # All issues have a span with location information
             assert "span" in issue
-            if issue["span"] is not None:
-                assert "offset" in issue["span"]
-                assert "line" in issue["span"]
-                assert "column" in issue["span"]
-                assert "length" in issue["span"]
+            span = issue["span"]
+            assert isinstance(span, dict)
+            assert span.keys() == {"offset", "line", "column", "length"}
 
     @pytest.mark.asyncio
     async def test_issue_has_path_field(self, temp_repo: str) -> None:
