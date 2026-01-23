@@ -3,14 +3,44 @@
 //! This check verifies that owners specified in CODEOWNERS actually exist on GitHub.
 
 use super::{AsyncCheck, AsyncCheckContext};
-use crate::parse::{LineKind, Owner};
+use crate::parse::{LineKind, Owner, Span};
 use crate::validate::github_client::{TeamExistsResult, UserExistsResult};
 use crate::validate::{ValidationError, ValidationResult};
 use async_trait::async_trait;
 use futures::future::join_all;
 use log::{debug, trace, warn};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+
+/// Represents the kind of validation failure for an owner, without span information.
+/// This allows us to validate once and create errors for multiple occurrences.
+#[derive(Debug, Clone)]
+enum OwnerValidationFailure {
+    /// Owner not found on GitHub.
+    NotFound { owner: String, reason: String },
+    /// Insufficient authorization to verify owner.
+    Unauthorized { owner: String, reason: String },
+    /// Owner must be a team but is not.
+    MustBeTeam { owner: String },
+}
+
+impl OwnerValidationFailure {
+    /// Creates a ValidationError from this failure with the given span.
+    fn to_error(&self, span: Span) -> ValidationError {
+        match self {
+            OwnerValidationFailure::NotFound { owner, reason } => {
+                ValidationError::owner_not_found(owner, reason, span)
+            }
+            OwnerValidationFailure::Unauthorized { owner, reason } => {
+                ValidationError::insufficient_authorization(owner, reason, span)
+            }
+            OwnerValidationFailure::MustBeTeam { owner } => {
+                ValidationError::owner_must_be_team(owner, span)
+            }
+        }
+    }
+}
 
 /// Maximum number of concurrent GitHub API requests.
 /// Conservative limit to leave headroom for other application requests.
@@ -33,12 +63,13 @@ impl OwnersCheck {
         Self
     }
 
-    /// Validates a single owner.
-    async fn validate_owner(
+    /// Validates a single owner and returns a failure description (without span).
+    /// This allows us to validate once per unique owner and apply the result to all occurrences.
+    async fn validate_owner_inner(
         &self,
         owner: &Owner,
         ctx: &AsyncCheckContext<'_>,
-    ) -> Option<ValidationError> {
+    ) -> Option<OwnerValidationFailure> {
         // Check if owner is in the ignored list
         let owner_str = owner.as_str();
         if ctx.config.ignored_owners.contains(owner_str.as_ref()) {
@@ -47,14 +78,13 @@ impl OwnersCheck {
         }
 
         match owner {
-            Owner::User { name, span } => {
+            Owner::User { name, .. } => {
                 // Check if owners must be teams
                 if ctx.config.owners_must_be_teams {
                     debug!("User @{} rejected: owners_must_be_teams is enabled", name);
-                    return Some(ValidationError::owner_must_be_team(
-                        format!("@{}", name),
-                        *span,
-                    ));
+                    return Some(OwnerValidationFailure::MustBeTeam {
+                        owner: format!("@{}", name),
+                    });
                 }
 
                 // Verify user exists using the GitHub client trait
@@ -66,31 +96,28 @@ impl OwnersCheck {
                     }
                     Ok(UserExistsResult::NotFound) => {
                         debug!("User @{} not found", name);
-                        Some(ValidationError::owner_not_found(
-                            format!("@{}", name),
-                            "user does not exist",
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::NotFound {
+                            owner: format!("@{}", name),
+                            reason: "user does not exist".to_string(),
+                        })
                     }
                     Ok(UserExistsResult::Unauthorized) => {
                         warn!("Unauthorized to check user @{}", name);
-                        Some(ValidationError::insufficient_authorization(
-                            format!("@{}", name),
-                            "may need additional token scopes",
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::Unauthorized {
+                            owner: format!("@{}", name),
+                            reason: "may need additional token scopes".to_string(),
+                        })
                     }
                     Err(e) => {
                         warn!("API error checking user @{}: {}", name, e);
-                        Some(ValidationError::owner_not_found(
-                            format!("@{}", name),
-                            format!("API error: {}", e),
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::NotFound {
+                            owner: format!("@{}", name),
+                            reason: format!("API error: {}", e),
+                        })
                     }
                 }
             }
-            Owner::Team { org, team, span } => {
+            Owner::Team { org, team, .. } => {
                 // Verify team exists in organization using the GitHub client trait
                 trace!("Checking if team @{}/{} exists", org, team);
                 match ctx.github_client.team_exists(org, team).await {
@@ -100,27 +127,24 @@ impl OwnersCheck {
                     }
                     Ok(TeamExistsResult::NotFound) => {
                         debug!("Team @{}/{} not found", org, team);
-                        Some(ValidationError::owner_not_found(
-                            format!("@{}/{}", org, team),
-                            "team does not exist in organization",
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::NotFound {
+                            owner: format!("@{}/{}", org, team),
+                            reason: "team does not exist in organization".to_string(),
+                        })
                     }
                     Ok(TeamExistsResult::Unauthorized) => {
                         warn!("Unauthorized to check team @{}/{}", org, team);
-                        Some(ValidationError::insufficient_authorization(
-                            format!("@{}/{}", org, team),
-                            "may need read:org scope or team membership",
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::Unauthorized {
+                            owner: format!("@{}/{}", org, team),
+                            reason: "may need read:org scope or team membership".to_string(),
+                        })
                     }
                     Err(e) => {
                         warn!("API error checking team @{}/{}: {}", org, team, e);
-                        Some(ValidationError::owner_not_found(
-                            format!("@{}/{}", org, team),
-                            format!("API error: {}", e),
-                            *span,
-                        ))
+                        Some(OwnerValidationFailure::NotFound {
+                            owner: format!("@{}/{}", org, team),
+                            reason: format!("API error: {}", e),
+                        })
                     }
                 }
             }
@@ -133,10 +157,9 @@ impl OwnersCheck {
                         "Email {} rejected: owners_must_be_teams is enabled",
                         owner.as_str()
                     );
-                    return Some(ValidationError::owner_must_be_team(
-                        owner.as_str(),
-                        *owner.span(),
-                    ));
+                    return Some(OwnerValidationFailure::MustBeTeam {
+                        owner: owner.as_str().into_owned(),
+                    });
                 }
                 None
             }
@@ -154,43 +177,46 @@ impl AsyncCheck for OwnersCheck {
         debug!("Running owners check");
         let mut result = ValidationResult::new();
 
-        // Collect all unique owners to avoid duplicate API calls
-        let mut unique_owners: Vec<&Owner> = Vec::new();
-        let mut seen_owners = std::collections::HashSet::new();
+        // Collect all owners grouped by their string representation.
+        // This allows us to make one API call per unique owner while tracking
+        // all occurrences so we can report errors for each line.
+        let mut owners_by_str: HashMap<String, Vec<&Owner>> = HashMap::new();
 
         for line in &ctx.file.lines {
             if let LineKind::Rule { owners, .. } = &line.kind {
                 for owner in owners {
-                    let owner_str = owner.as_str();
-                    if !seen_owners.contains(owner_str.as_ref()) {
-                        seen_owners.insert(owner_str.into_owned());
-                        unique_owners.push(owner);
-                    }
+                    let owner_str = owner.as_str().into_owned();
+                    owners_by_str.entry(owner_str).or_default().push(owner);
                 }
             }
         }
 
         debug!(
-            "Collected {} unique owners to validate",
-            unique_owners.len()
+            "Collected {} unique owners to validate ({} total occurrences)",
+            owners_by_str.len(),
+            owners_by_str.values().map(|v| v.len()).sum::<usize>()
         );
 
-        if unique_owners.is_empty() {
+        if owners_by_str.is_empty() {
             return result;
         }
 
         // Use bounded concurrency to avoid rate limiting
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
-        // Create futures for all owner validations
-        let futures: Vec<_> = unique_owners
-            .into_iter()
-            .map(|owner| {
+        // Create futures for all unique owner validations.
+        // We validate using the first occurrence of each owner, but we'll
+        // create errors for all occurrences if validation fails.
+        let futures: Vec<_> = owners_by_str
+            .iter()
+            .map(|(owner_str, occurrences)| {
                 let permit = semaphore.clone();
+                let first_occurrence = occurrences[0];
                 async move {
                     // Acquire semaphore permit before making API call
                     let _permit = permit.acquire().await.ok()?;
-                    self.validate_owner(owner, ctx).await
+                    let failure = self.validate_owner_inner(first_occurrence, ctx).await?;
+                    Some((owner_str.clone(), failure))
                 }
             })
             .collect();
@@ -198,13 +224,27 @@ impl AsyncCheck for OwnersCheck {
         // Run all validations concurrently (bounded by semaphore)
         let validation_results = join_all(futures).await;
 
-        // Collect errors
-        for error in validation_results.into_iter().flatten() {
-            // Check if it's a rate limit error and log a warning
-            if matches!(&error, ValidationError::InsufficientAuthorization { .. }) {
-                warn!("GitHub API authorization issue encountered");
+        // Collect validation failures
+        let failures: HashMap<String, OwnerValidationFailure> =
+            validation_results.into_iter().flatten().collect();
+
+        // Create errors for ALL occurrences of each failed owner
+        for (owner_str, failure) in &failures {
+            // Check if it's an authorization error and log a warning (once per owner)
+            if matches!(failure, OwnerValidationFailure::Unauthorized { .. }) {
+                warn!(
+                    "GitHub API authorization issue encountered for {}",
+                    owner_str
+                );
             }
-            result.add_error(error);
+
+            // Get all occurrences of this owner and create an error for each
+            if let Some(occurrences) = owners_by_str.get(owner_str) {
+                for owner in occurrences {
+                    let error = failure.to_error(*owner.span());
+                    result.add_error(error);
+                }
+            }
         }
 
         debug!(
@@ -453,5 +493,116 @@ mod tests {
         assert!(result.is_ok());
         // Verify user_exists was only called once
         assert_eq!(client.user_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn duplicate_invalid_owner_reports_all_lines() {
+        // When the same invalid owner appears on multiple lines,
+        // we should report errors for ALL lines, not just the first one.
+        let client = MockGithubClient::new(); // No users registered - ghostuser will be not found
+        let file = parse_codeowners("*.rs @ghostuser\n*.md @ghostuser\n*.txt @ghostuser\n").ast;
+        let path = PathBuf::from("/repo");
+        let config = CheckConfig::new();
+        let ctx = AsyncCheckContext::new(&file, &path, &config, &client);
+
+        let result = OwnersCheck::new().run(&ctx).await;
+        assert!(result.has_errors());
+
+        // Should have 3 errors, one for each line
+        assert_eq!(
+            result.errors.len(),
+            3,
+            "Expected 3 errors (one per line), got {}",
+            result.errors.len()
+        );
+
+        // Verify each error is for the correct line
+        let mut lines: Vec<usize> = result.errors.iter().map(|e| e.line()).collect();
+        lines.sort();
+        assert_eq!(
+            lines,
+            vec![1, 2, 3],
+            "Errors should be on lines 1, 2, and 3"
+        );
+
+        // Verify all errors are OwnerNotFound for @ghostuser
+        for error in &result.errors {
+            match error {
+                ValidationError::OwnerNotFound { owner, .. } => {
+                    assert_eq!(owner, "@ghostuser");
+                }
+                _ => panic!("Expected OwnerNotFound error, got {:?}", error),
+            }
+        }
+
+        // Verify API was still only called once (efficiency preserved)
+        assert_eq!(client.user_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn duplicate_invalid_team_reports_all_lines() {
+        // Same test but for teams
+        let client = MockGithubClient::new(); // No teams registered
+        let file = parse_codeowners("*.rs @myorg/ghost\n*.md @myorg/ghost\n").ast;
+        let path = PathBuf::from("/repo");
+        let config = CheckConfig::new();
+        let ctx = AsyncCheckContext::new(&file, &path, &config, &client);
+
+        let result = OwnersCheck::new().run(&ctx).await;
+        assert!(result.has_errors());
+
+        // Should have 2 errors, one for each line
+        assert_eq!(result.errors.len(), 2);
+
+        let mut lines: Vec<usize> = result.errors.iter().map(|e| e.line()).collect();
+        lines.sort();
+        assert_eq!(lines, vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn duplicate_must_be_team_reports_all_lines() {
+        // When owners_must_be_teams is enabled and a user appears on multiple lines,
+        // all lines should be reported.
+        let client = MockGithubClient::new().with_user("someuser");
+        let file = parse_codeowners("*.rs @someuser\n*.md @someuser\n").ast;
+        let path = PathBuf::from("/repo");
+        let config = CheckConfig::new().with_owners_must_be_teams(true);
+        let ctx = AsyncCheckContext::new(&file, &path, &config, &client);
+
+        let result = OwnersCheck::new().run(&ctx).await;
+        assert!(result.has_errors());
+
+        // Should have 2 errors, one for each line
+        assert_eq!(result.errors.len(), 2);
+
+        for error in &result.errors {
+            match error {
+                ValidationError::OwnerMustBeTeam { owner, .. } => {
+                    assert_eq!(owner, "@someuser");
+                }
+                _ => panic!("Expected OwnerMustBeTeam error"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn mixed_valid_and_invalid_owners() {
+        // Test that valid owners don't generate errors but invalid ones do for all occurrences
+        let client = MockGithubClient::new().with_user("validuser");
+        let file =
+            parse_codeowners("*.rs @validuser @ghostuser\n*.md @ghostuser\n*.txt @validuser\n").ast;
+        let path = PathBuf::from("/repo");
+        let config = CheckConfig::new();
+        let ctx = AsyncCheckContext::new(&file, &path, &config, &client);
+
+        let result = OwnersCheck::new().run(&ctx).await;
+        assert!(result.has_errors());
+
+        // ghostuser appears on lines 1 and 2, so 2 errors
+        assert_eq!(result.errors.len(), 2);
+
+        let mut lines: Vec<usize> = result.errors.iter().map(|e| e.line()).collect();
+        lines.sort();
+        assert_eq!(lines, vec![1, 2]);
     }
 }
