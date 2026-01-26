@@ -150,12 +150,18 @@ pub enum FailureLevel {
 impl Args {
     /// Returns the checks to run, defaulting to all standard checks.
     pub fn effective_checks(&self) -> Vec<CheckKind> {
-        self.checks.clone().unwrap_or_else(CheckKind::all)
+        self.checks
+            .as_ref()
+            .map(|v| v.to_vec())
+            .unwrap_or_else(CheckKind::all)
     }
 
     /// Returns the experimental checks to run (empty by default).
     pub fn effective_experimental_checks(&self) -> Vec<ExperimentalCheckKind> {
-        self.experimental_checks.clone().unwrap_or_default()
+        self.experimental_checks
+            .as_ref()
+            .map(|v| v.to_vec())
+            .unwrap_or_default()
     }
 
     /// Returns true if a specific check should be run.

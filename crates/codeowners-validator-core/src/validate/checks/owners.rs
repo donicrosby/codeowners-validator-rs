@@ -223,11 +223,22 @@ impl AsyncCheck for OwnersCheck {
             .map(|(owner_str, occurrences)| {
                 let permit = semaphore.clone();
                 let first_occurrence = occurrences[0];
+                let owner_str_clone = owner_str.clone();
                 async move {
                     // Acquire semaphore permit before making API call
-                    let _permit = permit.acquire().await.ok()?;
+                    let _permit = match permit.acquire().await {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            // Semaphore was closed - this shouldn't happen in normal operation
+                            warn!(
+                                "Failed to acquire semaphore for owner '{}': {}. Skipping validation.",
+                                owner_str_clone, e
+                            );
+                            return None;
+                        }
+                    };
                     let failure = self.validate_owner_inner(first_occurrence, ctx).await?;
-                    Some((owner_str.clone(), failure))
+                    Some((owner_str_clone, failure))
                 }
             })
             .collect();

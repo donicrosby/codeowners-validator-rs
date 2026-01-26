@@ -3,6 +3,7 @@
 //! This module contains nom-based parsers for individual tokens
 //! like patterns, owners, and comments.
 
+use log::debug;
 use nom::{
     IResult, Parser,
     bytes::complete::take_while1,
@@ -180,7 +181,11 @@ pub fn make_owner(text: &str, span: Span) -> Owner {
         OwnerKind::Team { org, team } => Owner::team(org, team, span),
         OwnerKind::Email(email) => Owner::email(email, span),
         OwnerKind::Unknown(raw) => {
-            // Treat unknown as a user for now; validation will catch it
+            // Treat unknown as a user for now; validation will catch the format error
+            debug!(
+                "Unknown owner format '{}' at line {}, treating as user",
+                raw, span.line
+            );
             Owner::user(raw, span)
         }
     }
