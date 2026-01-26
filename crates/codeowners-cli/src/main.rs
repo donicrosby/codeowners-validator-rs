@@ -39,10 +39,20 @@ async fn main() -> StdExitCode {
         let ctrl_c = signal::ctrl_c();
         #[cfg(unix)]
         let terminate = async {
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("failed to install signal handler")
-                .recv()
-                .await;
+            match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+                Ok(mut signal) => {
+                    signal.recv().await;
+                }
+                Err(e) => {
+                    // If we can't install the signal handler, log and wait forever
+                    // (ctrl_c will still work via the other branch)
+                    warn!(
+                        "Failed to install SIGTERM handler: {}. SIGTERM will not be handled.",
+                        e
+                    );
+                    std::future::pending::<()>().await;
+                }
+            }
         };
         #[cfg(not(unix))]
         let terminate = std::future::pending::<()>();
@@ -84,11 +94,25 @@ fn init_tracing(verbosity: u8, json_output: bool) {
         _ => Level::TRACE,
     };
 
-    let filter = EnvFilter::from_default_env()
-        .add_directive(level.into())
-        .add_directive("octocrab=warn".parse().unwrap())
-        .add_directive("hyper=warn".parse().unwrap())
-        .add_directive("reqwest=warn".parse().unwrap());
+    let mut filter = EnvFilter::from_default_env().add_directive(level.into());
+
+    // Add directives to suppress noisy dependencies.
+    // These are hardcoded valid directives, but we handle errors defensively.
+    for directive_str in ["octocrab=warn", "hyper=warn", "reqwest=warn"] {
+        match directive_str.parse() {
+            Ok(directive) => {
+                filter = filter.add_directive(directive);
+            }
+            Err(e) => {
+                // This should never happen with hardcoded valid directives,
+                // but if it does, log to stderr (since tracing isn't initialized yet)
+                eprintln!(
+                    "Warning: failed to parse log directive '{}': {}",
+                    directive_str, e
+                );
+            }
+        }
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)

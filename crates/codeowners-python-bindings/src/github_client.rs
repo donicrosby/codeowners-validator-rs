@@ -92,7 +92,14 @@ impl PyGithubClient {
                 .await
                 .map_err(|e| GithubClientError::Other(e.to_string()))
         } else {
-            Ok(maybe_result.expect("Either future or result should be Some"))
+            // When maybe_future is None, maybe_result must be Some (sync result path).
+            // This is guaranteed by the logic above, but we handle it defensively.
+            maybe_result.ok_or_else(|| {
+                GithubClientError::Other(
+                    "Internal error: Python method returned neither a coroutine nor a value"
+                        .to_string(),
+                )
+            })
         }
     }
 }
@@ -181,8 +188,22 @@ impl GithubClient for PyGithubClient {
     }
 }
 
-// Safety: PyGithubClient is Send + Sync because it only contains a PyObject
-// which is Send + Sync when not actively borrowing from Python
+// SAFETY: PyGithubClient can implement Send and Sync because:
+//
+// 1. The only field is `client: Py<PyAny>`, which is PyO3's GIL-independent reference.
+//    `Py<T>` is explicitly designed to be Send+Sync - it's a reference-counted pointer
+//    to a Python object that can be safely transferred between threads.
+//
+// 2. All access to the Python object happens through `Python::attach()` which properly
+//    acquires the GIL before any Python operations. We never hold borrowed references
+//    (`Bound<'py, T>`) across await points or thread boundaries.
+//
+// 3. The async methods (`call_python_method_async`, `user_exists`, `team_exists`) use
+//    `Python::attach()` to acquire the GIL within the current thread context, ensuring
+//    thread-safe access to the Python interpreter.
+//
+// 4. When converting Python coroutines to Rust futures via `pyo3_async_runtimes::tokio::into_future`,
+//    the resulting future is Send-safe as documented by pyo3-async-runtimes.
 unsafe impl Send for PyGithubClient {}
 unsafe impl Sync for PyGithubClient {}
 
