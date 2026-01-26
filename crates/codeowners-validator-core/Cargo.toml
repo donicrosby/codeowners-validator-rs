@@ -3,6 +3,7 @@ name = "codeowners-validator-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "A library for parsing and validating GitHub CODEOWNERS files"
 readme = "../../README.md"
 
