@@ -42,9 +42,20 @@ impl OwnerValidationFailure {
     }
 }
 
-/// Maximum number of concurrent GitHub API requests.
+/// Default maximum number of concurrent GitHub API requests.
 /// Conservative limit to leave headroom for other application requests.
-const MAX_CONCURRENT_REQUESTS: usize = 10;
+const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 10;
+
+/// Returns the maximum number of concurrent GitHub API requests.
+///
+/// This can be configured via the `CODEOWNERS_MAX_CONCURRENT_REQUESTS` environment variable.
+/// Falls back to `DEFAULT_MAX_CONCURRENT_REQUESTS` (10) if not set or invalid.
+fn max_concurrent_requests() -> usize {
+    std::env::var("CODEOWNERS_MAX_CONCURRENT_REQUESTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONCURRENT_REQUESTS)
+}
 
 /// A check that validates owners exist on GitHub.
 ///
@@ -202,7 +213,7 @@ impl AsyncCheck for OwnersCheck {
         }
 
         // Use bounded concurrency to avoid rate limiting
-        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests()));
 
         // Create futures for all unique owner validations.
         // We validate using the first occurrence of each owner, but we'll

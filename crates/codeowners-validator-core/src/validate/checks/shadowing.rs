@@ -54,9 +54,75 @@ impl AvoidShadowingCheck {
             return false;
         }
 
+        // Early exit: patterns with disjoint anchored prefixes can't overlap
+        if Self::has_disjoint_prefix(&general.text, &specific.text) {
+            return false;
+        }
+
+        // Early exit: patterns with different file extensions (and no wildcards in extension) can't overlap
+        if Self::has_disjoint_extension(&general.text, &specific.text) {
+            return false;
+        }
+
         // Check if the general pattern could match paths the specific one matches
         // We use heuristics here since exact matching is complex
         Self::patterns_overlap(&general.text, &specific.text)
+    }
+
+    /// Checks if two patterns have disjoint anchored prefixes.
+    ///
+    /// For example, `/src/` and `/docs/` have disjoint prefixes and can never match the same files.
+    fn has_disjoint_prefix(general: &str, specific: &str) -> bool {
+        // Only applies to anchored patterns (starting with /)
+        if !general.starts_with('/') || !specific.starts_with('/') {
+            return false;
+        }
+
+        // Extract first directory component after the leading /
+        let general_first = general[1..].split('/').next().unwrap_or("");
+        let specific_first = specific[1..].split('/').next().unwrap_or("");
+
+        // If either contains wildcards, they might still overlap
+        if general_first.contains('*') || specific_first.contains('*') {
+            return false;
+        }
+
+        // Both have concrete first components that differ - disjoint
+        !general_first.is_empty() && !specific_first.is_empty() && general_first != specific_first
+    }
+
+    /// Checks if two patterns have disjoint file extensions.
+    ///
+    /// For example, `*.rs` and `*.md` have disjoint extensions and can never match the same files.
+    fn has_disjoint_extension(general: &str, specific: &str) -> bool {
+        // Extract extension patterns (e.g., ".rs" from "*.rs" or "/src/*.rs")
+        fn extract_extension(pattern: &str) -> Option<&str> {
+            // Look for the last component after the last /
+            let last_component = pattern.rsplit('/').next().unwrap_or(pattern);
+
+            // Must be an extension pattern like "*.ext" or "**.ext"
+            if let Some(dot_pos) = last_component.rfind('.') {
+                let before_dot = &last_component[..dot_pos];
+                let extension = &last_component[dot_pos..];
+
+                // Only consider it a clear extension pattern if:
+                // - The part before the dot ends with * (wildcard)
+                // - The extension doesn't contain wildcards
+                if before_dot.ends_with('*') && !extension.contains('*') {
+                    return Some(extension);
+                }
+            }
+            None
+        }
+
+        if let (Some(gen_ext), Some(spec_ext)) =
+            (extract_extension(general), extract_extension(specific))
+        {
+            // Both have clear extension patterns - check if they differ
+            return gen_ext != spec_ext;
+        }
+
+        false
     }
 
     /// Heuristically checks if two patterns could match overlapping paths.

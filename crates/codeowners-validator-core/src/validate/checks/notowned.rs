@@ -3,6 +3,8 @@
 //! This check identifies files in the repository that are not covered
 //! by any CODEOWNERS rule.
 
+use std::collections::HashMap;
+
 use super::{Check, CheckContext};
 use crate::matching::Pattern;
 use crate::parse::{CodeownersFile, LineKind, Span};
@@ -16,15 +18,103 @@ use crate::validate::{ValidationError, ValidationResult};
 #[derive(Debug, Clone, Default)]
 pub struct NotOwnedCheck;
 
+/// Patterns grouped by their prefix for efficient matching.
+///
+/// This optimization reduces the number of pattern comparisons needed for each file
+/// by only checking patterns that could potentially match based on the file's path prefix.
+struct GroupedPatterns {
+    /// Patterns that match any path (unanchored, like `*.rs` or `**/*.js`)
+    global: Vec<Pattern>,
+    /// Patterns grouped by their first directory component (e.g., `/src/` patterns)
+    by_prefix: HashMap<String, Vec<Pattern>>,
+    /// Root-level anchored patterns (e.g., `/README.md`, `/*.rs`)
+    root: Vec<Pattern>,
+}
+
+impl GroupedPatterns {
+    /// Creates a new grouped patterns collection from a list of patterns.
+    fn new(patterns: Vec<Pattern>) -> Self {
+        let mut global = Vec::new();
+        let mut by_prefix: HashMap<String, Vec<Pattern>> = HashMap::new();
+        let mut root = Vec::new();
+
+        for pattern in patterns {
+            let text = pattern.as_str();
+
+            if let Some(after_slash) = text.strip_prefix('/') {
+                // Anchored pattern - extract first directory component
+                if let Some(slash_pos) = after_slash.find('/') {
+                    // Has a directory component like /src/...
+                    let prefix = &after_slash[..slash_pos];
+                    if !prefix.contains('*') {
+                        // Concrete prefix - group by it
+                        by_prefix
+                            .entry(prefix.to_string())
+                            .or_default()
+                            .push(pattern);
+                        continue;
+                    }
+                }
+                // Root-level pattern or pattern with wildcard in first component
+                root.push(pattern);
+            } else {
+                // Unanchored pattern - could match anywhere
+                global.push(pattern);
+            }
+        }
+
+        Self {
+            global,
+            by_prefix,
+            root,
+        }
+    }
+
+    /// Checks if a file is covered by any pattern in this collection.
+    fn is_file_covered(&self, file: &str) -> bool {
+        // Check global patterns (most likely to match)
+        if self.global.iter().any(|p| p.matches(file)) {
+            return true;
+        }
+
+        // Check root patterns
+        if self.root.iter().any(|p| p.matches(file)) {
+            return true;
+        }
+
+        // Extract file's first directory component and check matching prefix group
+        if let Some(prefix) = Self::extract_first_dir(file) {
+            if self
+                .by_prefix
+                .get(prefix)
+                .is_some_and(|patterns| patterns.iter().any(|p| p.matches(file)))
+            {
+                return true;
+            }
+        } else {
+            // File is at root level - check all prefix groups for patterns that might match
+            // (This is rare, so checking all is acceptable)
+            for patterns in self.by_prefix.values() {
+                if patterns.iter().any(|p| p.matches(file)) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Extracts the first directory component from a file path.
+    fn extract_first_dir(file: &str) -> Option<&str> {
+        let file = file.strip_prefix('/').unwrap_or(file);
+        file.find('/').map(|pos| &file[..pos])
+    }
+}
+
 impl NotOwnedCheck {
     /// Creates a new not-owned check.
     pub fn new() -> Self {
         Self
-    }
-
-    /// Checks if a file is covered by any of the patterns.
-    fn is_file_covered(file: &str, patterns: &[Pattern]) -> bool {
-        patterns.iter().any(|pattern| pattern.matches(file))
     }
 
     /// Checks if a file matches any skip pattern.
@@ -59,15 +149,22 @@ impl Check for NotOwnedCheck {
     fn run(&self, ctx: &CheckContext) -> ValidationResult {
         let mut result = ValidationResult::new();
 
-        // Compile all patterns from CODEOWNERS
-        let mut patterns: Vec<Pattern> = Vec::new();
-        for line in &ctx.file.lines {
-            if let LineKind::Rule { pattern, .. } = &line.kind
-                && let Some(compiled) = Pattern::new(&pattern.text)
-            {
-                patterns.push(compiled);
-            }
-        }
+        // Compile all patterns from CODEOWNERS and group by prefix for efficient matching
+        let patterns: Vec<Pattern> = ctx
+            .file
+            .lines
+            .iter()
+            .filter_map(|line| {
+                if let LineKind::Rule { pattern, .. } = &line.kind {
+                    Pattern::new(&pattern.text)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Group patterns by prefix for O(n + m) matching instead of O(n * m)
+        let grouped_patterns = GroupedPatterns::new(patterns);
 
         // Compile skip patterns from config
         let skip_patterns: Vec<Pattern> = ctx
@@ -90,8 +187,8 @@ impl Check for NotOwnedCheck {
                 continue;
             }
 
-            // Check if file is covered
-            if !Self::is_file_covered(&file, &patterns) {
+            // Check if file is covered using grouped patterns for efficiency
+            if !grouped_patterns.is_file_covered(&file) {
                 result.add_error(ValidationError::file_not_owned(&file, eof_span));
             }
         }
