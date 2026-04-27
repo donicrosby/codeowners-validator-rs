@@ -10,6 +10,7 @@ use codeowners_validator_core::validate::checks::CheckConfig;
 use jsonwebtoken::EncodingKey;
 use octocrab::Octocrab;
 use octocrab::models::{AppId, InstallationId};
+use secrecy::SecretString;
 use std::path::Path;
 use thiserror::Error;
 
@@ -35,6 +36,10 @@ pub enum ConfigError {
     /// IO error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Remote repository error (clone failed, invalid URL, etc.).
+    #[error(transparent)]
+    Remote(#[from] codeowners_validator_core::remote::RemoteRepoError),
 }
 
 /// Application exit codes matching the Go version.
@@ -73,25 +78,44 @@ pub struct ValidatedConfig {
     pub failure_level: FailureLevel,
     /// Whether to output JSON.
     pub json_output: bool,
+    /// RAII guard for a shallow-cloned temporary directory (when `--repository-url` is used).
+    _clone_guard: Option<codeowners_validator_core::remote::ClonedRepo>,
 }
 
 impl ValidatedConfig {
     /// Creates a validated configuration from CLI arguments.
-    pub fn from_args(args: &Args) -> Result<Self, ConfigError> {
-        let repo_path = args.repository_path.canonicalize().map_err(|e| {
-            ConfigError::Invalid(format!(
-                "repository path '{}' is invalid: {}",
-                args.repository_path.display(),
-                e
-            ))
-        })?;
+    pub async fn from_args(args: &Args) -> Result<Self, ConfigError> {
+        // Resolve repository path: either clone from a URL or use a local path.
+        let (repo_path, clone_guard) = if let Some(ref url) = args.repository_url {
+            let auth = get_clone_auth(args).await?;
+            let base_host = extract_clone_host(&args.github_base_url);
+            let cloned =
+                codeowners_validator_core::remote::shallow_clone(url, auth.as_ref(), base_host)?;
+            let path = cloned.path.clone();
+            (path, Some(cloned))
+        } else {
+            let path = args.repository_path.canonicalize().map_err(|e| {
+                ConfigError::Invalid(format!(
+                    "repository path '{}' is invalid: {}",
+                    args.repository_path.display(),
+                    e
+                ))
+            })?;
+            (path, None)
+        };
 
         // Find the CODEOWNERS file
         let codeowners_path = find_codeowners_file(&repo_path)?;
 
+        // When using --repository-url, auto-derive owner/repo if not explicitly provided.
+        let effective_owner_repo = args
+            .owner_checker_repository
+            .clone()
+            .or_else(|| clone_guard.as_ref().and_then(|c| c.owner_repo.clone()));
+
         // Validate that owners check has required config
         let checks = args.effective_checks();
-        if checks.contains(&CheckKind::Owners) && args.owner_checker_repository.is_none() {
+        if checks.contains(&CheckKind::Owners) && effective_owner_repo.is_none() {
             return Err(ConfigError::MissingRequired(
                 "OWNER_CHECKER_REPOSITORY is required when 'owners' check is enabled".to_string(),
             ));
@@ -112,7 +136,7 @@ impl ValidatedConfig {
             check_config = check_config.with_skip_patterns(patterns.clone());
         }
 
-        if let Some(ref repo) = args.owner_checker_repository {
+        if let Some(ref repo) = effective_owner_repo {
             check_config = check_config.with_repository(repo.clone());
         }
 
@@ -124,6 +148,7 @@ impl ValidatedConfig {
             experimental_checks: args.effective_experimental_checks(),
             failure_level: args.check_failure_level,
             json_output: args.json,
+            _clone_guard: clone_guard,
         })
     }
 
@@ -213,6 +238,69 @@ pub async fn create_octocrab(args: &Args) -> Result<Option<Octocrab>, ConfigErro
     } else {
         Ok(None)
     }
+}
+
+/// Returns a bearer token suitable for authenticating a `git clone` over HTTPS.
+///
+/// Handles both PAT and GitHub App authentication.  Returns `None` when no
+/// authentication is configured (public-repo clones).
+async fn get_clone_auth(args: &Args) -> Result<Option<SecretString>, ConfigError> {
+    if let Some(ref token) = args.github_access_token {
+        return Ok(Some(SecretString::from(token.clone())));
+    }
+
+    if args.has_github_app_auth() {
+        let app_id = AppId(args.github_app_id.unwrap());
+        let installation_id = InstallationId(args.github_app_installation_id.unwrap());
+        let private_key = args.github_app_private_key.as_ref().unwrap();
+
+        let key = EncodingKey::from_rsa_pem(private_key.as_bytes())
+            .map_err(|e| ConfigError::GitHubAuth(format!("invalid private key: {e}")))?;
+
+        let base_url = if args.github_base_url != "https://api.github.com/" {
+            Some(args.github_base_url.as_str())
+        } else {
+            None
+        };
+
+        let mut builder = Octocrab::builder().app(app_id, key);
+        if let Some(url) = base_url {
+            builder = builder
+                .base_uri(url)
+                .map_err(|e| ConfigError::GitHubAuth(format!("invalid base URL: {e}")))?;
+        }
+        let app_client = builder
+            .build()
+            .map_err(|e| ConfigError::GitHubAuth(format!("failed to create app client: {e}")))?;
+
+        let (_, token) = app_client
+            .installation_and_token(installation_id)
+            .await
+            .map_err(|e| {
+                ConfigError::GitHubAuth(format!("failed to mint installation access token: {e}"))
+            })?;
+
+        return Ok(Some(token));
+    }
+
+    Ok(None)
+}
+
+/// Extracts the Git host from the configured GitHub base URL for use when
+/// resolving `owner/repo` shorthand in `--repository-url`.
+///
+/// Returns `None` for the default `https://api.github.com/` (core will use
+/// `github.com` as the default), or the hostname for GitHub Enterprise.
+fn extract_clone_host(base_url: &str) -> Option<&str> {
+    if base_url == "https://api.github.com/" || base_url == "https://api.github.com" {
+        return None;
+    }
+    // GHE API URLs look like `https://hostname/api/v3/`.
+    // Extract just the hostname so shorthand resolves to the right host.
+    base_url
+        .strip_prefix("https://")
+        .and_then(|rest| rest.split('/').next())
+        .filter(|s| !s.is_empty())
 }
 
 /// Determines if validation failed based on results and failure level.
@@ -306,8 +394,8 @@ mod tests {
         assert!(!has_failures(empty.into_iter(), FailureLevel::Warning));
     }
 
-    #[test]
-    fn test_exit_code_for_results() {
+    #[tokio::test]
+    async fn test_exit_code_for_results() {
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -316,7 +404,7 @@ mod tests {
             "--owner-checker-repository",
             "owner/repo",
         ]);
-        let config = ValidatedConfig::from_args(&args).unwrap();
+        let config = ValidatedConfig::from_args(&args).await.unwrap();
 
         // No issues
         assert_eq!(
@@ -337,8 +425,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_exit_code_error_level() {
+    #[tokio::test]
+    async fn test_exit_code_error_level() {
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -349,7 +437,7 @@ mod tests {
             "--check-failure-level",
             "error",
         ]);
-        let config = ValidatedConfig::from_args(&args).unwrap();
+        let config = ValidatedConfig::from_args(&args).await.unwrap();
 
         // Warnings don't fail with error level
         assert_eq!(config.exit_code_for_results(false, true), ExitCode::Success);
@@ -361,8 +449,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validated_config_missing_owner_repo() {
+    #[tokio::test]
+    async fn test_validated_config_missing_owner_repo() {
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -371,7 +459,7 @@ mod tests {
             "--checks",
             "owners",
         ]);
-        let result = ValidatedConfig::from_args(&args);
+        let result = ValidatedConfig::from_args(&args).await;
         assert!(result.is_err());
         assert!(
             result
@@ -381,8 +469,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validated_config_without_owners_check() {
+    #[tokio::test]
+    async fn test_validated_config_without_owners_check() {
         let dir = create_test_repo();
         let args = Args::parse_from([
             "codeowners-validator",
@@ -392,7 +480,25 @@ mod tests {
             "syntax,files",
         ]);
         // Should succeed without owner checker repository
-        let result = ValidatedConfig::from_args(&args);
+        let result = ValidatedConfig::from_args(&args).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_repository_url_conflicts_with_path() {
+        let result = Args::try_parse_from([
+            "codeowners-validator",
+            "--repository-url",
+            "owner/repo",
+            "--repository-path",
+            "/some/path",
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_repository_url_parses() {
+        let args = Args::parse_from(["codeowners-validator", "--repository-url", "owner/repo"]);
+        assert_eq!(args.repository_url.as_deref(), Some("owner/repo"));
     }
 }

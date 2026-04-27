@@ -75,7 +75,8 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///
 /// Args:
 ///     repo_path: Path to the repository root directory. The CODEOWNERS file will
-///         be automatically located within this directory.
+///         be automatically located within this directory. Mutually exclusive with
+///         `repository_url`.
 ///     config: Optional configuration dictionary with keys:
 ///         - ignored_owners: List of owners to ignore during validation
 ///         - owners_must_be_teams: Whether owners must be teams (bool)
@@ -93,6 +94,12 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///         Required for the "owners" check. Must have methods:
 ///         user_exists(username) -> bool,
 ///         team_exists(org, team) -> Literal["exists", "not_found", "unauthorized"]
+///     repository_url: Remote repository URL or `owner/repo` shorthand. The repo is
+///         shallow-cloned to a temporary directory automatically. Mutually exclusive
+///         with `repo_path`. SSH URLs are not supported.
+///     github_token: Bearer token (PAT or installation access token) used to
+///         authenticate the `git clone` when `repository_url` points to a private
+///         repo. Ignored when `repo_path` is used.
 ///
 /// Returns:
 ///     A dictionary with check results grouped by check name, where each entry contains:
@@ -101,6 +108,7 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 /// Raises:
 ///     FileNotFoundError: If no CODEOWNERS file is found in the repository.
 ///     IOError: If the CODEOWNERS file cannot be read.
+///     ValueError: If both `repo_path` and `repository_url` are provided.
 ///
 /// Example:
 ///     >>> import asyncio
@@ -109,26 +117,38 @@ fn parse_codeowners(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 ///     >>> result["syntax"]
 ///     []  # No syntax errors
 ///     >>>
-///     >>> # With GitHub client (includes owner verification)
-///     >>> class MyGithubClient:
-///     ...     async def user_exists(self, username: str) -> bool:
-///     ...         return True  # Implement with actual GitHub API call
-///     ...     async def team_exists(self, org: str, team: str) -> str:
-///     ...         return "exists"  # Implement with actual GitHub API call
+///     >>> # Remote repo (public)
 ///     >>> result = asyncio.run(validate_codeowners(
-///     ...     "/path/to/repo",
-///     ...     github_client=MyGithubClient()
+///     ...     repository_url="owner/repo",
+///     ...     checks=["syntax", "duppatterns"],
 ///     ... ))
 #[pyfunction]
-#[pyo3(signature = (repo_path, config=None, checks=None, github_client=None))]
+#[pyo3(signature = (repo_path=None, config=None, checks=None, github_client=None, repository_url=None, github_token=None))]
 fn validate_codeowners<'py>(
     py: Python<'py>,
-    repo_path: &str,
+    repo_path: Option<&str>,
     config: Option<&Bound<'py, PyDict>>,
     checks: Option<Vec<String>>,
     github_client: Option<Bound<'py, PyAny>>,
+    repository_url: Option<&str>,
+    github_token: Option<&str>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    info!("validate_codeowners called for repo: {}", repo_path);
+    // Validate mutual exclusion.
+    if repo_path.is_some() && repository_url.is_some() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "repo_path and repository_url are mutually exclusive; provide exactly one",
+        ));
+    }
+    if repo_path.is_none() && repository_url.is_none() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "either repo_path or repository_url must be provided",
+        ));
+    }
+
+    info!(
+        "validate_codeowners called (repo_path={:?}, repository_url={:?})",
+        repo_path, repository_url,
+    );
     debug!(
         "Configuration provided: {}, checks: {:?}, github_client: {}",
         config.is_some(),
@@ -136,8 +156,9 @@ fn validate_codeowners<'py>(
         github_client.is_some()
     );
 
-    // Create the async coroutine
-    let repo_path = repo_path.to_string();
+    let repo_path = repo_path.map(str::to_string);
+    let repository_url = repository_url.map(str::to_string);
+    let github_token = github_token.map(str::to_string);
     let github_client = github_client.map(|c| c.unbind());
     let config_dict: Option<HashMap<String, Py<PyAny>>> = config.map(|c| {
         c.iter()
@@ -146,29 +167,66 @@ fn validate_codeowners<'py>(
     });
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        validate_codeowners_impl(&repo_path, config_dict.as_ref(), checks, github_client).await
+        validate_codeowners_impl(
+            repo_path.as_deref(),
+            repository_url.as_deref(),
+            github_token.as_deref(),
+            config_dict.as_ref(),
+            checks,
+            github_client,
+        )
+        .await
     })
 }
 
 async fn validate_codeowners_impl(
-    repo_path: &str,
+    repo_path: Option<&str>,
+    repository_url: Option<&str>,
+    github_token: Option<&str>,
     config: Option<&HashMap<String, Py<PyAny>>>,
     checks: Option<Vec<String>>,
     github_client: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyDict>> {
     use codeowners_validator_core::validate::checks::{CheckRunner, OwnersCheck};
 
-    debug!("validate_codeowners_impl starting for: {}", repo_path);
+    // Resolve the working repo path, cloning if a URL was given.
+    #[cfg(feature = "remote")]
+    let (resolved_path_buf, _clone_guard) = if let Some(url) = repository_url {
+        debug!("validate_codeowners_impl: cloning {}", url);
+        let auth = github_token.map(|t| secrecy::SecretString::from(t.to_string()));
+        let cloned = codeowners_validator_core::remote::shallow_clone(url, auth.as_ref(), None)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        let path = cloned.path.clone();
+        (path, Some(cloned))
+    } else {
+        (
+            std::path::PathBuf::from(repo_path.expect("repo_path validated above")),
+            None::<codeowners_validator_core::remote::ClonedRepo>,
+        )
+    };
 
-    let repo_path_buf = std::path::Path::new(repo_path);
+    #[cfg(not(feature = "remote"))]
+    let resolved_path_buf = {
+        if repository_url.is_some() {
+            return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "repository_url requires the 'remote' feature to be enabled",
+            ));
+        }
+        std::path::PathBuf::from(repo_path.expect("repo_path validated above"))
+    };
+
+    let repo_path_str = resolved_path_buf.to_string_lossy().into_owned();
+    let repo_path_buf = resolved_path_buf.as_path();
+
+    debug!("validate_codeowners_impl starting for: {}", repo_path_str);
 
     // Find the CODEOWNERS file
-    debug!("Searching for CODEOWNERS file in: {}", repo_path);
+    debug!("Searching for CODEOWNERS file in: {}", repo_path_str);
     let codeowners_path =
         codeowners_validator_core::find_codeowners_file(repo_path_buf).ok_or_else(|| {
             pyo3::exceptions::PyFileNotFoundError::new_err(format!(
             "CODEOWNERS file not found in repository '{}'. Searched in: .github/CODEOWNERS, CODEOWNERS, docs/CODEOWNERS",
-            repo_path
+            repo_path_str,
         ))
         })?;
 

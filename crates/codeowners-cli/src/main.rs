@@ -127,7 +127,7 @@ async fn run(args: Args, terminated: &AtomicBool) -> ExitCode {
     let mut stderr = io::stderr().lock();
 
     // Validate configuration
-    let config = match ValidatedConfig::from_args(&args) {
+    let config = match ValidatedConfig::from_args(&args).await {
         Ok(config) => config,
         Err(e) => {
             let use_colors = !args.json && io::stdout().is_terminal();

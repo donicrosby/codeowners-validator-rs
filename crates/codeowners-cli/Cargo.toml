@@ -21,7 +21,7 @@ path = "src/bin/generate_fixtures.rs"
 required-features = ["generate"]
 
 [dependencies]
-codeowners-validator-core.workspace = true
+codeowners-validator-core = { workspace = true, features = ["remote"] }
 
 # CLI dependencies
 clap.workspace = true
