@@ -3,11 +3,13 @@ name = "codeowners-python-bindings"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Python bindings for the CODEOWNERS validator"
 
 [features]
-default = ["generate"]  # Python bindings include generator by default for benchmarking
+default = ["generate", "remote"]
 generate = ["codeowners-validator-core/generate"]
+remote = ["codeowners-validator-core/remote", "dep:secrecy"]
 
 [lib]
 name = "codeowners_validator"
@@ -24,6 +26,7 @@ tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+secrecy = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

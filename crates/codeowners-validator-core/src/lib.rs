@@ -62,6 +62,9 @@ pub mod validate;
 #[cfg(feature = "generate")]
 pub mod generate;
 
+#[cfg(feature = "remote")]
+pub mod remote;
+
 #[cfg(feature = "generate")]
 pub use generate::{GeneratorConfig, generate, generate_ast};
 

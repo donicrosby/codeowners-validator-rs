@@ -47,16 +47,25 @@ impl Check for FilesCheck {
             if let LineKind::Rule { pattern, .. } = &line.kind {
                 trace!("Checking pattern: {}", pattern.text);
                 // Compile the pattern
-                if let Some(compiled) = Pattern::new(&pattern.text)
-                    && !Self::pattern_matches_any(&compiled, &files)
-                {
-                    debug!("Pattern '{}' does not match any files", pattern.text);
-                    result.add_error(ValidationError::pattern_not_matching(
-                        &pattern.text,
-                        pattern.span,
-                    ));
+                match Pattern::new(&pattern.text) {
+                    Some(compiled) if !Self::pattern_matches_any(&compiled, &files) => {
+                        debug!("Pattern '{}' does not match any files", pattern.text);
+                        result.add_error(ValidationError::pattern_not_matching(
+                            &pattern.text,
+                            pattern.span,
+                        ));
+                    }
+                    Some(_) => {
+                        // Pattern compiled and matches files - no error
+                    }
+                    None => {
+                        // Pattern compilation failed - syntax check will handle this
+                        trace!(
+                            "Pattern '{}' failed to compile, skipping files check",
+                            pattern.text
+                        );
+                    }
                 }
-                // If pattern compilation fails, that's a syntax error handled elsewhere
             }
         }
 

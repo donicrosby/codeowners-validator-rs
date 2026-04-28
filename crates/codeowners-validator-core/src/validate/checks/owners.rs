@@ -42,9 +42,20 @@ impl OwnerValidationFailure {
     }
 }
 
-/// Maximum number of concurrent GitHub API requests.
+/// Default maximum number of concurrent GitHub API requests.
 /// Conservative limit to leave headroom for other application requests.
-const MAX_CONCURRENT_REQUESTS: usize = 10;
+const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 10;
+
+/// Returns the maximum number of concurrent GitHub API requests.
+///
+/// This can be configured via the `CODEOWNERS_MAX_CONCURRENT_REQUESTS` environment variable.
+/// Falls back to `DEFAULT_MAX_CONCURRENT_REQUESTS` (10) if not set or invalid.
+fn max_concurrent_requests() -> usize {
+    std::env::var("CODEOWNERS_MAX_CONCURRENT_REQUESTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONCURRENT_REQUESTS)
+}
 
 /// A check that validates owners exist on GitHub.
 ///
@@ -202,7 +213,7 @@ impl AsyncCheck for OwnersCheck {
         }
 
         // Use bounded concurrency to avoid rate limiting
-        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
+        let semaphore = Arc::new(Semaphore::new(max_concurrent_requests()));
 
         // Create futures for all unique owner validations.
         // We validate using the first occurrence of each owner, but we'll
@@ -212,11 +223,22 @@ impl AsyncCheck for OwnersCheck {
             .map(|(owner_str, occurrences)| {
                 let permit = semaphore.clone();
                 let first_occurrence = occurrences[0];
+                let owner_str_clone = owner_str.clone();
                 async move {
                     // Acquire semaphore permit before making API call
-                    let _permit = permit.acquire().await.ok()?;
+                    let _permit = match permit.acquire().await {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            // Semaphore was closed - this shouldn't happen in normal operation
+                            warn!(
+                                "Failed to acquire semaphore for owner '{}': {}. Skipping validation.",
+                                owner_str_clone, e
+                            );
+                            return None;
+                        }
+                    };
                     let failure = self.validate_owner_inner(first_occurrence, ctx).await?;
-                    Some((owner_str.clone(), failure))
+                    Some((owner_str_clone, failure))
                 }
             })
             .collect();

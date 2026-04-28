@@ -3,6 +3,7 @@
 //! This module contains nom-based parsers for individual tokens
 //! like patterns, owners, and comments.
 
+use log::debug;
 use nom::{
     IResult, Parser,
     bytes::complete::take_while1,
@@ -89,16 +90,15 @@ pub fn parse_rule_components(input: &str) -> IResult<&str, RuleComponents<'_>> {
     // Parse pattern
     let (after_pattern, pattern) = take_while1(is_pattern_char)(after_ws)?;
 
-    // Parse separator
-    let (after_sep, _) = space1(after_pattern)?;
+    // Parse separator (whitespace between pattern and first owner)
+    let (after_sep, separator) = space1(after_pattern)?;
 
     // Parse owners (one or more)
     let mut owners = Vec::new();
     let mut owner_offsets = Vec::new();
     let mut current = after_sep;
-    let mut current_offset = pattern_offset
-        + pattern.len()
-        + (after_sep.as_ptr() as usize - after_pattern.as_ptr() as usize);
+    // Calculate offset using string lengths instead of pointer arithmetic
+    let mut current_offset = pattern_offset + pattern.len() + separator.len();
 
     loop {
         // Skip whitespace before owner
@@ -181,7 +181,11 @@ pub fn make_owner(text: &str, span: Span) -> Owner {
         OwnerKind::Team { org, team } => Owner::team(org, team, span),
         OwnerKind::Email(email) => Owner::email(email, span),
         OwnerKind::Unknown(raw) => {
-            // Treat unknown as a user for now; validation will catch it
+            // Treat unknown as a user for now; validation will catch the format error
+            debug!(
+                "Unknown owner format '{}' at line {}, treating as user",
+                raw, span.line
+            );
             Owner::user(raw, span)
         }
     }

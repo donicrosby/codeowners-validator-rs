@@ -138,6 +138,7 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
     let mut lines = Vec::new();
     let mut errors = Vec::new();
     let mut offset = 0;
+    let mut remaining = input;
 
     for (line_idx, line_text) in input.lines().enumerate() {
         let line_num = line_idx + 1; // 1-based line numbers
@@ -162,12 +163,26 @@ pub fn parse_codeowners_with_config(input: &str, config: &ParserConfig) -> Parse
             }
         }
 
-        // Update offset for next line (+1 for newline character)
-        offset += line_text.len() + 1;
-    }
+        // Calculate actual byte offset for next line by examining the original input.
+        // This correctly handles both Unix (\n) and Windows (\r\n) line endings.
+        let line_with_ending_len = if remaining.len() > line_text.len() {
+            let after_content = &remaining[line_text.len()..];
+            if after_content.starts_with("\r\n") {
+                line_text.len() + 2 // CRLF
+            } else if after_content.starts_with('\n') {
+                line_text.len() + 1 // LF
+            } else {
+                // Last line without trailing newline
+                line_text.len()
+            }
+        } else {
+            // Last line, no more content
+            line_text.len()
+        };
 
-    // Handle case where file doesn't end with newline
-    // (the lines iterator doesn't include the trailing newline)
+        offset += line_with_ending_len;
+        remaining = &remaining[line_with_ending_len..];
+    }
 
     let ast = CodeownersFile::new(lines);
 

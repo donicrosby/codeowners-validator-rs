@@ -16,7 +16,6 @@ repository = "https://github.com/donicrosby/codeowners-validator-rs"
 # Core dependencies
 nom = "8.0"
 thiserror = "2.0"
-walkdir = "2"
 ignore = "0.4"
 globset = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync"] }

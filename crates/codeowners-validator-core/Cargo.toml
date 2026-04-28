@@ -3,12 +3,14 @@ name = "codeowners-validator-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "A library for parsing and validating GitHub CODEOWNERS files"
 readme = "../../README.md"
 
 [features]
 default = []
-generate = ["rand"]  # Enable CODEOWNERS file generation for benchmarking
+generate = ["rand"]
+remote = ["dep:tempfile", "dep:secrecy"]
 
 [dependencies]
 nom.workspace = true
@@ -22,6 +24,8 @@ log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rand = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -20,8 +20,20 @@ use std::path::PathBuf;
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// Path to the repository root.
-    #[arg(long, env = "REPOSITORY_PATH", default_value = ".")]
+    #[arg(
+        long,
+        env = "REPOSITORY_PATH",
+        default_value = ".",
+        conflicts_with = "repository_url"
+    )]
     pub repository_path: PathBuf,
+
+    /// Remote repository to validate. Accepts HTTPS URLs (`https://github.com/owner/repo`)
+    /// or `owner/repo` shorthand (resolved against `--github-base-url`'s host).
+    /// The repository is shallow-cloned to a temporary directory automatically.
+    /// SSH URLs are not supported; use HTTPS or the owner/repo shorthand instead.
+    #[arg(long, env = "REPOSITORY_URL", conflicts_with = "repository_path")]
+    pub repository_url: Option<String>,
 
     /// GitHub personal access token for owner validation.
     /// Required if the 'owners' check is enabled.
@@ -150,12 +162,18 @@ pub enum FailureLevel {
 impl Args {
     /// Returns the checks to run, defaulting to all standard checks.
     pub fn effective_checks(&self) -> Vec<CheckKind> {
-        self.checks.clone().unwrap_or_else(CheckKind::all)
+        self.checks
+            .as_ref()
+            .map(|v| v.to_vec())
+            .unwrap_or_else(CheckKind::all)
     }
 
     /// Returns the experimental checks to run (empty by default).
     pub fn effective_experimental_checks(&self) -> Vec<ExperimentalCheckKind> {
-        self.experimental_checks.clone().unwrap_or_default()
+        self.experimental_checks
+            .as_ref()
+            .map(|v| v.to_vec())
+            .unwrap_or_default()
     }
 
     /// Returns true if a specific check should be run.
